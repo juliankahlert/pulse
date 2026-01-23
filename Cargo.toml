@@ -1,0 +1,37 @@
+[package]
+name = "pulse"
+version = "0.1.0"
+edition = "2024"
+description = "Pulse – A fast, configurable Rust PS1 prompt engine for modern shells. "
+license = "MIT"
+
+[dependencies]
+clap = { version = "4.4", features = ["derive"] }
+tokio = { version = "1.0", features = ["full"] }
+owo-colors = "4.0"
+gix = { version = "0.60", features = ["parallel"] }
+humansize = "2.0"
+indicatif = "0.17"
+anyhow = "1.0"
+thiserror = "2.0"
+num_cpus = "1.15"
+tempfile = "3.0"
+chrono = "0.4"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+atty = "0.2"
+users = "0.11"
+serde_yaml = "0.9.34"
+dirs = "6.0.0"
+hostname = "0.3"
+log = "0.4"
+env_logger = "0.10"
+
+[profile.release]
+lto = true
+opt-level = "z"
+
+[package.metadata.generate-rpm]
+assets = [
+  { source = "target/release/pulse", dest = "/usr/bin/pulse", mode = "755" },
+]
