@@ -267,6 +267,8 @@ mod tests {
     #[test]
     fn test_get_exit_code_pipestatus() {
         unsafe {
+            std::env::remove_var("PIPESTATUS");
+            std::env::remove_var("LAST_EXIT_CODE");
             std::env::set_var("PIPESTATUS", "42");
         }
         assert_eq!(get_exit_code(), "42");
@@ -279,6 +281,7 @@ mod tests {
     fn test_get_exit_code_last_exit_code() {
         unsafe {
             std::env::remove_var("PIPESTATUS");
+            std::env::remove_var("LAST_EXIT_CODE");
             std::env::set_var("LAST_EXIT_CODE", "1");
         }
         assert_eq!(get_exit_code(), "1");
@@ -290,6 +293,8 @@ mod tests {
     #[test]
     fn test_get_exit_code_precedence() {
         unsafe {
+            std::env::remove_var("PIPESTATUS");
+            std::env::remove_var("LAST_EXIT_CODE");
             std::env::set_var("PIPESTATUS", "10");
             std::env::set_var("LAST_EXIT_CODE", "20");
         }
@@ -308,5 +313,31 @@ mod tests {
         let p = prompt.unwrap();
         assert!(p.contains("$ "));
         assert!(p.lines().count() == 2); // DualLine mode
+    }
+
+    #[test]
+    fn test_generate_prompt_inline_git() {
+        let mut config = crate::config::Config::default();
+        config.mode = Some("Inline".to_string());
+        let prompt = generate_prompt(&config);
+        assert!(prompt.is_ok());
+        let p = prompt.unwrap();
+        assert!(p.contains("$ "));
+        assert!(p.lines().count() == 1); // Inline mode
+    }
+
+    #[test]
+    fn test_generate_prompt_dualline_git_format() {
+        let config = crate::config::Config::default();
+        let prompt = generate_prompt(&config);
+        assert!(prompt.is_ok());
+        let p = prompt.unwrap();
+        // Should contain repo name and branch in Git format
+        assert!(p.contains("pulse")); // repo name
+        assert!(p.contains("[")); // start of Git info
+        assert!(p.contains(" : ")); // separator
+        assert!(p.contains("]")); // end of Git info
+        // Should have navigation path
+        assert!(p.lines().count() == 2);
     }
 }
