@@ -119,3 +119,115 @@ impl Config {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_default_config_colors() {
+        let config = Config::default();
+        assert_eq!(config.get_color("username"), Clrs::Blue);
+        assert_eq!(config.get_color("hostname"), Clrs::Green);
+        assert_eq!(config.get_color("current_directory"), Clrs::Silver);
+        assert_eq!(config.get_color("git_branch"), Clrs::Red);
+    }
+
+    #[test]
+    fn test_get_color_configured() {
+        let mut config = Config::default();
+        config.segments[0].color = Some("Red".to_string()); // username
+        assert_eq!(config.get_color("username"), Clrs::Red);
+        // Others should still be default
+        assert_eq!(config.get_color("hostname"), Clrs::Green);
+    }
+
+    #[test]
+    fn test_get_color_unknown_segment() {
+        let config = Config::default();
+        assert_eq!(config.get_color("unknown"), Clrs::White);
+    }
+
+    #[test]
+    fn test_validate_valid_colors() {
+        let config = Config {
+            segments: vec![
+                SegmentConfig {
+                    name: "username".to_string(),
+                    color: Some("Blue".to_string()),
+                },
+                SegmentConfig {
+                    name: "hostname".to_string(),
+                    color: Some("Green".to_string()),
+                },
+            ],
+            mode: None,
+        };
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_validate_invalid_color() {
+        let config = Config {
+            segments: vec![SegmentConfig {
+                name: "username".to_string(),
+                color: Some("InvalidColor".to_string()),
+            }],
+            mode: None,
+        };
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_validate_invalid_segment_name() {
+        let config = Config {
+            segments: vec![SegmentConfig {
+                name: "invalid_segment".to_string(),
+                color: Some("Blue".to_string()),
+            }],
+            mode: None,
+        };
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_merge_overrides_existing() {
+        let mut base = Config {
+            segments: vec![SegmentConfig {
+                name: "username".to_string(),
+                color: Some("Blue".to_string()),
+            }],
+            mode: None,
+        };
+        let other = Config {
+            segments: vec![SegmentConfig {
+                name: "username".to_string(),
+                color: Some("Red".to_string()),
+            }],
+            mode: None,
+        };
+        base.merge(other);
+        assert_eq!(base.get_color("username"), Clrs::Red);
+    }
+
+    #[test]
+    fn test_merge_adds_new_segments() {
+        let mut base = Config {
+            segments: vec![SegmentConfig {
+                name: "username".to_string(),
+                color: Some("Blue".to_string()),
+            }],
+            mode: None,
+        };
+        let other = Config {
+            segments: vec![SegmentConfig {
+                name: "hostname".to_string(),
+                color: Some("Green".to_string()),
+            }],
+            mode: None,
+        };
+        base.merge(other);
+        assert_eq!(base.get_color("username"), Clrs::Blue);
+        assert_eq!(base.get_color("hostname"), Clrs::Green);
+    }
+}
