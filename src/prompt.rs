@@ -1,10 +1,15 @@
+//! Prompt generation logic for Pulse.
+//!
+//! Generates shell prompts with user info, host, directory, and Git status.
+//! Supports different modes and customizable colors.
+
 use anyhow::{Result, anyhow};
 
 use crate::clrs::Clrs;
 use crate::config::Config;
 use owo_colors::OwoColorize;
 
-/// Get the current username
+/// Get the current username.
 pub fn get_username() -> Result<String> {
     users::get_current_username()
         .map(|s| s.to_string_lossy().to_string())

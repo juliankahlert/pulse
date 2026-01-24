@@ -1,18 +1,29 @@
+//! Configuration management for Pulse.
+//!
+//! Handles loading and validating user configuration from YAML files,
+//! with support for global and user-specific configs.
+
 use anyhow::{Result, anyhow};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 use crate::clrs::Clrs;
 
+/// Configuration for a single prompt segment.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SegmentConfig {
+    /// The name of the segment (e.g., "username", "hostname").
     pub name: String,
+    /// Optional color override for this segment.
     pub color: Option<String>,
 }
 
+/// Main configuration structure for Pulse.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Config {
+    /// List of segment configurations.
     pub segments: Vec<SegmentConfig>,
+    /// Display mode: "DualLine" or "Inline".
     pub mode: Option<String>,
 }
 
@@ -43,6 +54,10 @@ impl Default for Config {
 }
 
 impl Config {
+    /// Load configuration from default locations.
+    ///
+    /// Loads global config from /etc/pulse/config.yaml, then user config
+    /// from ~/.config/pulse/config.yaml, merging them with defaults.
     pub fn load() -> Result<Self> {
         let mut config = Self::default();
 
@@ -71,6 +86,7 @@ impl Config {
         Ok(config)
     }
 
+    /// Merge another config into this one, overriding existing segments.
     fn merge(&mut self, other: Self) {
         for other_segment in other.segments {
             if let Some(existing) = self
@@ -85,6 +101,9 @@ impl Config {
         }
     }
 
+    /// Validate the configuration for correctness.
+    ///
+    /// Checks that all segment names are valid and colors parse correctly.
     pub fn validate(&self) -> Result<()> {
         let valid_names = ["username", "hostname", "current_directory", "git_branch"];
         for segment in &self.segments {
@@ -100,6 +119,9 @@ impl Config {
         Ok(())
     }
 
+    /// Get the color for a given segment name.
+    ///
+    /// Returns the configured color if available, otherwise defaults.
     pub fn get_color(&self, name: &str) -> Clrs {
         for segment in &self.segments {
             if segment.name == name

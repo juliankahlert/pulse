@@ -1,7 +1,7 @@
 //! clrs.cc inspired color palette for the terminal
 //! A nicer color palette for the command line
 //!
-//! Based on https://clrs.cc/
+//! Based on <https://clrs.cc/>
 //!
 //! ## Colors
 //!

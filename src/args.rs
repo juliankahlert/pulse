@@ -1,5 +1,11 @@
+//! Command-line argument parsing for Pulse.
+//!
+//! Defines the CLI interface using clap, allowing users to specify
+//! configuration files and display modes.
+
 use clap::Parser;
 
+/// Command-line arguments for Pulse.
 #[derive(Parser, Debug, Clone)]
 #[command(name = "pulse")]
 #[command(
