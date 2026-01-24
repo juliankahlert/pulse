@@ -78,10 +78,12 @@ pub fn generate_prompt(config: &Config) -> Result<String> {
         first_line.push_str(&format!("{}", nav.color(dir_color)));
     } else {
         // Non-git mode
-        let (root, nav) = if dir.starts_with("~/") {
-            ("~", dir.strip_prefix("~/").unwrap_or(&dir).to_string())
+        let (root, nav) = if dir == "~" {
+            ("~", "".to_string())
+        } else if dir.starts_with("~/") {
+            ("~", dir.strip_prefix("~/").unwrap().to_string())
         } else {
-            ("/", dir.strip_prefix("/").unwrap_or(&dir).to_string())
+            ("/", dir.strip_prefix("/").unwrap().to_string())
         };
         let nav_parts: Vec<&str> = nav.split('/').filter(|s| !s.is_empty()).collect();
         let path_display = truncate_non_git_path(root, &nav_parts, mode == "Inline");
@@ -241,6 +243,11 @@ mod tests {
     #[test]
     fn test_truncate_non_git_path_dualline_empty() {
         assert_eq!(truncate_non_git_path("/", &[], false), "/");
+    }
+
+    #[test]
+    fn test_truncate_non_git_path_tilde_empty() {
+        assert_eq!(truncate_non_git_path("~", &[], false), "~");
     }
 
     #[test]
