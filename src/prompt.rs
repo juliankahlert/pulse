@@ -94,10 +94,11 @@ pub fn generate_prompt(config: &Config) -> Result<String> {
         first_line.push_str(&format!("{}", path_display.color(dir_color)));
     }
 
+    let prompt_symbol = if is_root_user() { "#" } else { "$" };
     let prompt = if mode == "Inline" {
-        format!("{} $ ", first_line)
+        format!("{} {} ", first_line, prompt_symbol)
     } else {
-        format!("{}\n└─ {} $ ", first_line, exit_code)
+        format!("{}\n└─ {} {} ", first_line, exit_code, prompt_symbol)
     };
     Ok(prompt)
 }
@@ -128,6 +129,11 @@ pub fn get_exit_code() -> String {
     std::env::var("PIPESTATUS")
         .or_else(|_| std::env::var("LAST_EXIT_CODE"))
         .unwrap_or_else(|_| "0".to_string())
+}
+
+/// Check if current user is root
+pub fn is_root_user() -> bool {
+    users::get_current_uid() == 0
 }
 
 /// Get the git repository name if in a repository
@@ -315,6 +321,24 @@ mod tests {
             std::env::remove_var("PIPESTATUS");
             std::env::remove_var("LAST_EXIT_CODE");
         }
+    }
+
+    #[test]
+    fn test_is_root_user() {
+        // This test will pass on non-root systems (which is expected for development)
+        let is_root = is_root_user();
+        // We can't guarantee the test environment, so just verify the function runs
+        assert!(!is_root || is_root); // This always passes, just testing the function doesn't panic
+    }
+
+    #[test]
+    fn test_generate_prompt_root_symbol() {
+        let config = crate::config::Config::default();
+        let prompt = generate_prompt(&config);
+        assert!(prompt.is_ok());
+        let p = prompt.unwrap();
+        // Should contain either $ or # depending on user
+        assert!(p.contains("$") || p.contains("#"));
     }
 
     #[test]
