@@ -1,20 +1,23 @@
-use anyhow::Result;
+//! Command-line argument parsing for Pulse.
+//!
+//! Defines the CLI interface using clap, allowing users to specify
+//! configuration files and display modes.
+
 use clap::Parser;
 
-use crate::args::Args;
-
-#[derive(Parser, Debug)]
+/// Command-line arguments for Pulse.
+#[derive(Parser, Debug, Clone)]
 #[command(name = "pulse")]
-#[command(author = "Julian Kahlert")]
-#[command(version = "0.1.0")]
-#[command(about = "A fast, configurable Rust PS1 prompt engine for modern shells.", long_about = None)]
-pub struct Cli {
-	// PLAHOLDER
-}
+#[command(
+    version,
+    about = "A fast, configurable Rust PS1 prompt engine for modern shells"
+)]
+pub struct Args {
+    /// Path to custom configuration file
+    #[arg(short, long)]
+    pub config: Option<String>,
 
-
-impl Cli {
-    pub fn into_args(self) -> Result<Args> {
-	Ok(Args{})
-    }
+    /// Use inline mode instead of dual-line
+    #[arg(long)]
+    pub inline: bool,
 }

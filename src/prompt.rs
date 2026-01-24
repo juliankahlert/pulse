@@ -151,9 +151,9 @@ pub fn truncate_git_path(parts: &[&str]) -> String {
 }
 
 /// Truncate non-git path for display
-pub fn truncate_non_git_path(root: &str, parts: &[&str], inline: bool) -> String {
-    if inline || parts.is_empty() {
-        format!("{} pulse", root)
+pub fn truncate_non_git_path(root: &str, parts: &[&str], _inline: bool) -> String {
+    if parts.is_empty() {
+        root.to_string()
     } else if parts.len() > 3 {
         format!("{} … {}", root, parts[parts.len() - 3..].join(" › "))
     } else {
@@ -235,12 +235,12 @@ mod tests {
 
     #[test]
     fn test_truncate_non_git_path_inline() {
-        assert_eq!(truncate_non_git_path("~", &["a", "b"], true), "~ pulse");
+        assert_eq!(truncate_non_git_path("~", &["a", "b"], true), "~ a › b");
     }
 
     #[test]
     fn test_truncate_non_git_path_dualline_empty() {
-        assert_eq!(truncate_non_git_path("/", &[], false), "/ pulse");
+        assert_eq!(truncate_non_git_path("/", &[], false), "/");
     }
 
     #[test]

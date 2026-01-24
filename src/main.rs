@@ -7,7 +7,7 @@ use anyhow::Result;
 use clap::Parser;
 use log::error;
 
-mod args;
+mod cli;
 mod clrs;
 mod config;
 mod prompt;
@@ -18,12 +18,15 @@ mod prompt;
 /// generates the prompt, and prints it to stdout.
 fn main() -> Result<()> {
     env_logger::init();
-    let _args = args::Args::parse();
-    let _config = config::Config::load().map_err(|e| {
+    let args = cli::Args::parse();
+    let mut config = config::Config::load().map_err(|e| {
         error!("Failed to load config: {}", e);
         e
     })?;
-    let prompt = prompt::generate_prompt(&_config).map_err(|e| {
+    if args.inline {
+        config.mode = Some("Inline".to_string());
+    }
+    let prompt = prompt::generate_prompt(&config).map_err(|e| {
         error!("Failed to generate prompt: {}", e);
         e
     })?;
