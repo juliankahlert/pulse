@@ -61,12 +61,14 @@ pub fn generate_prompt(config: &Config) -> Result<String> {
         let relative_str = relative.to_string_lossy();
         let parts: Vec<&str> = relative_str.split('/').filter(|s| !s.is_empty()).collect();
         let branch = get_git_branch().unwrap_or_else(|| "unknown".to_string());
-        let nav = truncate_git_path(&parts, &branch);
+        let nav = truncate_git_path(&parts);
         first_line.push_str(&format!("{}", user.color(user_color)));
         first_line.push_str(&format!("{}", "@".color(white)));
         first_line.push_str(&format!("{}", host.color(host_color)));
         first_line.push_str(&format!("{}", ": [".color(white)));
         first_line.push_str(&format!("{}", repo_name.color(git_color)));
+        first_line.push_str(&format!("{}", " : ".color(white)));
+        first_line.push_str(&format!("{}", branch.color(git_color)));
         first_line.push_str(&format!("{}", "] ".color(white)));
         first_line.push_str(&format!("{}", nav.color(dir_color)));
     } else {
@@ -133,13 +135,13 @@ pub fn get_git_repo_name() -> Option<String> {
 }
 
 /// Truncate git path for display
-pub fn truncate_git_path(parts: &[&str], branch: &str) -> String {
+pub fn truncate_git_path(parts: &[&str]) -> String {
     if parts.is_empty() {
-        branch.to_string()
+        String::new()
     } else if parts.len() > 3 {
-        format!("… {} › {}", parts[parts.len() - 3..].join(" › "), branch)
+        format!("… {}", parts[parts.len() - 3..].join(" › "))
     } else {
-        format!("{} › {}", parts.join(" › "), branch)
+        parts.join(" › ")
     }
 }
 
@@ -205,31 +207,25 @@ mod tests {
 
     #[test]
     fn test_truncate_git_path_empty() {
-        assert_eq!(truncate_git_path(&[], "main"), "main");
+        assert_eq!(truncate_git_path(&[]), "");
     }
 
     #[test]
     fn test_truncate_git_path_three_parts() {
         assert_eq!(
-            truncate_git_path(&["src", "main", "rust"], "main"),
-            "src › main › rust › main"
+            truncate_git_path(&["src", "main", "rust"]),
+            "src › main › rust"
         );
     }
 
     #[test]
     fn test_truncate_git_path_four_parts() {
-        assert_eq!(
-            truncate_git_path(&["a", "b", "c", "d"], "main"),
-            "… b › c › d › main"
-        );
+        assert_eq!(truncate_git_path(&["a", "b", "c", "d"]), "… b › c › d");
     }
 
     #[test]
     fn test_truncate_git_path_more_than_four() {
-        assert_eq!(
-            truncate_git_path(&["x", "y", "z", "a", "b"], "dev"),
-            "… z › a › b › dev"
-        );
+        assert_eq!(truncate_git_path(&["x", "y", "z", "a", "b"]), "… z › a › b");
     }
 
     #[test]
