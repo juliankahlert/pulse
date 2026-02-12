@@ -4,7 +4,8 @@
 //! customizable colors, and different display modes.
 
 use anyhow::Result;
-use clap::Parser;
+use clap::{CommandFactory, Parser};
+use clap_complete::generate;
 use log::error;
 
 mod cli;
@@ -26,6 +27,22 @@ fn main() -> Result<()> {
             error!("Failed to install: {}", e);
             e
         });
+    }
+
+    if let Some(shell) = &args.generate_completions {
+        let shell = match shell.to_lowercase().as_str() {
+            "bash" => clap_complete::Shell::Bash,
+            "zsh" => clap_complete::Shell::Zsh,
+            "fish" => clap_complete::Shell::Fish,
+            "powershell" | "pwsh" => clap_complete::Shell::PowerShell,
+            "elvish" => clap_complete::Shell::Elvish,
+            _ => {
+                error!("Unsupported shell: {}. Use: bash, zsh, fish, powershell, elvish", shell);
+                anyhow::bail!("Unsupported shell: {}", shell);
+            }
+        };
+        generate(shell, &mut cli::Args::command(), "pulse", &mut std::io::stdout());
+        return Ok(());
     }
 
     let mut config = config::Config::load().map_err(|e| {

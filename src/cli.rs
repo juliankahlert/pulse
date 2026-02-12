@@ -24,4 +24,8 @@ pub struct Args {
     /// Install Pulse to shell configuration
     #[arg(long)]
     pub install: bool,
+
+    /// Generate shell completions
+    #[arg(long, value_name = "SHELL")]
+    pub generate_completions: Option<String>,
 }

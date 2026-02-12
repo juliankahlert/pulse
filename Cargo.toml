@@ -6,7 +6,8 @@ description = "Pulse – A fast, configurable Rust PS1 prompt engine for modern 
 license = "MIT"
 
 [dependencies]
-clap = { version = "4.4", features = ["derive"] }
+clap = { version = "4.4", features = ["derive", "cargo"] }
+clap_complete = "4.4"
 tokio = { version = "1.0", features = ["full"] }
 owo-colors = { version = "4.0", features = ["supports-colors"] }
 gix = { version = "0.60", features = ["parallel"] }
@@ -35,4 +36,6 @@ opt-level = "z"
 [package.metadata.generate-rpm]
 assets = [
   { source = "target/release/pulse", dest = "/usr/bin/pulse", mode = "755" },
+  { source = "completions/pulse.bash", dest = "/usr/share/bash-completion/completions/pulse", mode = "644" },
+  { source = "completions/pulse.zsh", dest = "/usr/share/zsh/site-functions/_pulse", mode = "644" },
 ]
