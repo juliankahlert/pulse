@@ -20,4 +20,8 @@ pub struct Args {
     /// Use inline mode instead of dual-line
     #[arg(long)]
     pub inline: bool,
+
+    /// Install Pulse to shell configuration
+    #[arg(long)]
+    pub install: bool,
 }

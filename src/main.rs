@@ -10,6 +10,7 @@ use log::error;
 mod cli;
 mod clrs;
 mod config;
+mod install;
 mod prompt;
 
 /// Main entry point for the Pulse application.
@@ -19,6 +20,14 @@ mod prompt;
 fn main() -> Result<()> {
     env_logger::init();
     let args = cli::Args::parse();
+
+    if args.install {
+        return install::install().map_err(|e| {
+            error!("Failed to install: {}", e);
+            e
+        });
+    }
+
     let mut config = config::Config::load().map_err(|e| {
         error!("Failed to load config: {}", e);
         e
