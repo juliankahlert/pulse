@@ -5,42 +5,53 @@
 //!
 //! ## Colors
 //!
-//! | Name    | Hex     | RGB            |
-//! |---------|---------|----------------|
-//! | Navy    | #001f3f | (0, 31, 63)    |
-//! | Blue    | #0074D9 | (0, 116, 217)  |
-//! | Aqua    | #7FDBFF | (127, 219, 255)|
-//! | Teal    | #39CCCC | (57, 204, 204) |
-//! | Olive   | #3D9970 | (61, 153, 112) |
-//! | Green   | #2ECC40 | (46, 204, 64)  |
-//! | Lime    | #01FF70 | (1, 255, 112)  |
-//! | Yellow  | #FFDC00 | (255, 220, 0)  |
-//! | Orange  | #FF851B | (255, 133, 27) |
-//! | Red     | #FF4136 | (255, 65, 54)  |
-//! | Maroon  | #85144b | (133, 20, 75)  |
-//! | Fuchsia | #F012BE | (240, 18, 190) |
-//! | Purple  | #B10DC9 | (177, 13, 201) |
-//! | Black   | #111111 | (17, 17, 17)   |
-//! | Gray    | #AAAAAA | (170, 170, 170)|
-//! | Silver  | #DDDDDD | (221, 221, 221)|
-//! | White   | #FFFFFF | (255, 255, 255)|
+//! | Name    | Hex     | RGB            | ANSI    |
+//! |---------|---------|----------------|---------|
+//! | Navy    | #001f3f | (0, 31, 63)    | Black   |
+//! | Blue    | #0074D9 | (0, 116, 217)  | Blue    |
+//! | Aqua    | #7FDBFF | (127, 219, 255)| Cyan    |
+//! | Teal    | #39CCCC | (57, 204, 204) | Cyan    |
+//! | Olive   | #3D9970 | (61, 153, 112) | Green   |
+//! | Green   | #2ECC40 | (46, 204, 64)  | Green   |
+//! | Lime    | #01FF70 | (1, 255, 112)  | Green   |
+//! | Yellow  | #FFDC00 | (255, 220, 0)  | Yellow  |
+//! | Orange  | #FF851B | (255, 133, 27) | Yellow  |
+//! | Red     | #FF4136 | (255, 65, 54)  | Red     |
+//! | Maroon  | #85144b | (133, 20, 75)  | Red     |
+//! | Fuchsia | #F012BE | (240, 18, 190) | Magenta |
+//! | Purple  | #B10DC9 | (177, 13, 201) | Magenta |
+//! | Black   | #111111 | (17, 17, 17)   | Black   |
+//! | Gray    | #AAAAAA | (170, 170, 170)| White   |
+//! | Silver  | #DDDDDD | (221, 221, 221)| White   |
+//! | White   | #FFFFFF | (255, 255, 255)| White   |
 //!
 //! ## Usage
 //!
+//! By default, Pulse uses terminal ANSI colors which adapt to your terminal's
+//! configured color palette. To use the specific clrs.cc RGB values, configure
+//! a custom color in your pulse config.
+//!
 //! ```rust
-//! use l::clrs::{Clrs, Color};
+//! use pulse::clrs::Clrs;
+//! use owo_colors::OwoColorize;
 //!
+//! // Uses terminal's color palette
 //! let navy = Clrs::navy();
-//! println!("{}", "Hello Navy!".color(navy));
-//!
-//! let custom = Clrs::rgb(255, 0, 0);
-//! println!("{}", "Red!".color(custom));
+//! println!("{}", "Hello Navy!".color(navy.to_dyn()));
 //! ```
 
 use owo_colors::{DynColors, Rgb};
 use std::fmt;
 use std::os::unix::fs::FileTypeExt;
 use std::str::FromStr;
+
+/// Detects if the terminal supports truecolor (24-bit RGB).
+/// Falls back to ANSI colors (16-color palette) for terminals without truecolor support.
+pub fn supports_truecolor() -> bool {
+    supports_color::on_cached(supports_color::Stream::Stdout)
+        .map(|support| support.has_16m)
+        .unwrap_or(false)
+}
 
 /// Color palette for the application
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -66,9 +77,23 @@ pub enum Clrs {
 }
 
 impl Clrs {
-    /// Convert to owo-colors DynColors
+    /// Convert to owo-colors DynColors using ANSI terminal palette colors.
+    /// This adapts to the terminal's configured color scheme.
     pub fn to_dyn(self) -> DynColors {
-        self.into()
+        if supports_truecolor() {
+            // Terminal supports 24-bit RGB, use the specific clrs.cc colors
+            self.to_rgb_dyn()
+        } else {
+            // Use ANSI colors which adapt to the terminal's palette
+            DynColors::Ansi(self.into())
+        }
+    }
+
+    /// Convert to owo-colors DynColors using explicit RGB values.
+    /// Always uses the specific clrs.cc RGB colors regardless of terminal support.
+    pub fn to_rgb_dyn(self) -> DynColors {
+        let rgb = self.rgb_values();
+        DynColors::Rgb(rgb.0, rgb.1, rgb.2)
     }
 
     /// Get the RGB values
@@ -374,5 +399,22 @@ mod tests {
     fn test_custom_rgb() {
         let color = Clrs::rgb(255, 0, 0);
         assert_eq!(color, DynColors::Rgb(255, 0, 0));
+    }
+
+    #[test]
+    fn test_to_rgb_dyn() {
+        let color = Clrs::Blue.to_rgb_dyn();
+        assert_eq!(color, DynColors::Rgb(0, 116, 217));
+    }
+
+    #[test]
+    fn test_ansi_conversion() {
+        use owo_colors::AnsiColors;
+        let ansi: AnsiColors = Clrs::Blue.into();
+        assert_eq!(ansi, AnsiColors::Blue);
+        let ansi: AnsiColors = Clrs::Red.into();
+        assert_eq!(ansi, AnsiColors::Red);
+        let ansi: AnsiColors = Clrs::Green.into();
+        assert_eq!(ansi, AnsiColors::Green);
     }
 }

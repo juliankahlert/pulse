@@ -15,6 +15,8 @@ pub struct SegmentConfig {
     /// The name of the segment (e.g., "username", "hostname").
     pub name: String,
     /// Optional color override for this segment.
+    /// When not specified, Pulse uses terminal ANSI colors that adapt to your
+    /// terminal's configured color palette.
     pub color: Option<String>,
 }
 
@@ -122,6 +124,10 @@ impl Config {
     /// Get the color for a given segment name.
     ///
     /// Returns the configured color if available, otherwise defaults.
+    /// When no custom color is configured, Pulse uses terminal ANSI colors
+    /// that automatically adapt to your terminal's color palette.
+    /// On terminals with truecolor support (24-bit), the specific clrs.cc
+    /// RGB values are used instead.
     pub fn get_color(&self, name: &str) -> Clrs {
         for segment in &self.segments {
             if segment.name == name
