@@ -37,11 +37,19 @@ fn main() -> Result<()> {
             "powershell" | "pwsh" => clap_complete::Shell::PowerShell,
             "elvish" => clap_complete::Shell::Elvish,
             _ => {
-                error!("Unsupported shell: {}. Use: bash, zsh, fish, powershell, elvish", shell);
+                error!(
+                    "Unsupported shell: {}. Use: bash, zsh, fish, powershell, elvish",
+                    shell
+                );
                 anyhow::bail!("Unsupported shell: {}", shell);
             }
         };
-        generate(shell, &mut cli::Args::command(), "pulse", &mut std::io::stdout());
+        generate(
+            shell,
+            &mut cli::Args::command(),
+            "pulse",
+            &mut std::io::stdout(),
+        );
         return Ok(());
     }
 

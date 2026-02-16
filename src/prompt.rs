@@ -16,6 +16,21 @@ pub fn get_username() -> Result<String> {
         .ok_or_else(|| anyhow::anyhow!("Unable to get username"))
 }
 
+/// Get the git user email for the current repository if in a git repo
+pub fn get_git_user_email() -> Option<String> {
+    let repo = gix::discover(".").ok()?;
+    let config = repo.config_snapshot();
+    config.string("user.email").map(|s| s.to_string())
+}
+
+/// Get the user info for prompt: git user.email if in git repo, else system username
+pub fn get_prompt_user() -> Result<String> {
+    if let Some(email) = get_git_user_email() {
+        return Ok(email);
+    }
+    get_username()
+}
+
 /// Get the current working directory, with home directory abbreviated as ~
 pub fn get_current_directory() -> Result<String> {
     let cwd = std::env::current_dir()?;
@@ -41,7 +56,7 @@ pub fn get_current_directory() -> Result<String> {
 pub fn generate_prompt(config: &Config) -> Result<String> {
     let mode = config.mode.as_deref().unwrap_or("DualLine");
 
-    let user = get_username()?;
+    let user = get_prompt_user()?;
     let host = get_hostname()?;
     let dir = get_current_directory()?;
     let git_repo = get_git_repo_name();
@@ -67,9 +82,20 @@ pub fn generate_prompt(config: &Config) -> Result<String> {
         let parts: Vec<&str> = relative_str.split('/').filter(|s| !s.is_empty()).collect();
         let branch = get_git_branch().unwrap_or_else(|| "unknown".to_string());
         let nav = truncate_git_path(&parts);
-        first_line.push_str(&format!("{}", user.color(user_color)));
-        first_line.push_str(&format!("{}", "@".color(white)));
-        first_line.push_str(&format!("{}", host.color(host_color)));
+
+        // Show email with local part in user color, domain in host color
+        if let Some(email) = get_git_user_email() {
+            let email_parts: Vec<&str> = email.split('@').collect();
+            if email_parts.len() == 2 {
+                first_line.push_str(&format!("{}", email_parts[0].color(user_color)));
+                first_line.push_str(&format!("{}", "@".color(white)));
+                first_line.push_str(&format!("{}", email_parts[1].color(host_color)));
+            } else {
+                first_line.push_str(&format!("{}", email.color(user_color)));
+            }
+        } else {
+            first_line.push_str(&format!("{}", user.color(user_color)));
+        }
         first_line.push_str(&format!("{}", ": [".color(white)));
         first_line.push_str(&format!("{}", repo_name.color(git_color)));
         first_line.push_str(&format!("{}", " : ".color(white)));
