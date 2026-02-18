@@ -14,6 +14,9 @@ use crate::config::Config;
 use crossterm::terminal::size;
 use owo_colors::OwoColorize;
 
+const DEFAULT_TERM_WIDTH: usize = 120;
+const TRUNCATION_THRESHOLD: usize = 3;
+
 pub fn get_terminal_width() -> Option<u16> {
     size().ok().map(|(w, _)| w)
 }
@@ -439,7 +442,7 @@ pub fn generate_prompt(config: &Config) -> Result<String> {
         dir_color,
     };
 
-    let terminal_width = get_terminal_width().unwrap_or(120);
+    let terminal_width = get_terminal_width().unwrap_or(DEFAULT_TERM_WIDTH as u16);
 
     let mut first_line = String::new();
     if let Some(ref lazy_info) = git_info {
@@ -537,19 +540,20 @@ pub fn get_git_repo_name() -> Option<String> {
 pub fn truncate_git_path(parts: &[&str]) -> String {
     if parts.is_empty() {
         String::new()
-    } else if parts.len() > 3 {
-        format!("… {}", parts[parts.len() - 3..].join(" › "))
+    } else if parts.len() > TRUNCATION_THRESHOLD {
+        format!("… {}", parts[parts.len() - TRUNCATION_THRESHOLD..].join(" › "))
     } else {
         parts.join(" › ")
     }
 }
 
 /// Truncate non-git path for display
+/// Parameter reserved for future use - may affect formatting in inline mode
 pub fn truncate_non_git_path(root: &str, parts: &[&str], _inline: bool) -> String {
     if parts.is_empty() {
         root.to_string()
-    } else if parts.len() > 3 {
-        format!("{} … {}", root, parts[parts.len() - 3..].join(" › "))
+    } else if parts.len() > TRUNCATION_THRESHOLD {
+        format!("{} … {}", root, parts[parts.len() - TRUNCATION_THRESHOLD..].join(" › "))
     } else {
         format!("{} {}", root, parts.join(" › "))
     }
