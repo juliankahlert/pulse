@@ -244,6 +244,21 @@ fn calculate_git_prompt_width(
     }
 }
 
+fn format_email_parts(email: &str, colors: &PromptColors, show_full: bool) -> String {
+    let mut result = String::new();
+    let email_parts: Vec<&str> = email.split('@').collect();
+    if email_parts.len() == 2 {
+        if show_full {
+            result.push_str(&format!("{}", email_parts[0].color(colors.user_color)));
+        }
+        result.push_str(&format!("{}", "@".color(colors.white)));
+        result.push_str(&format!("{}", email_parts[1].color(colors.host_color)));
+    } else {
+        result.push_str(&format!("{}", email.color(colors.user_color)));
+    }
+    result
+}
+
 pub fn format_git_prompt_line(
     mode: GitDisplayMode,
     email: Option<&str>,
@@ -257,14 +272,7 @@ pub fn format_git_prompt_line(
     match mode {
         GitDisplayMode::Full => {
             if let Some(email) = email {
-                let email_parts: Vec<&str> = email.split('@').collect();
-                if email_parts.len() == 2 {
-                    result.push_str(&format!("{}", email_parts[0].color(colors.user_color)));
-                    result.push_str(&format!("{}", "@".color(colors.white)));
-                    result.push_str(&format!("{}", email_parts[1].color(colors.host_color)));
-                } else {
-                    result.push_str(&format!("{}", email.color(colors.user_color)));
-                }
+                result.push_str(&format_email_parts(email, colors, true));
             }
             result.push_str(&format!("{}", ": [".color(colors.white)));
             result.push_str(&format!("{}", repo_name.color(colors.git_color)));
@@ -274,14 +282,7 @@ pub fn format_git_prompt_line(
         }
         GitDisplayMode::Mini => {
             if let Some(email) = email {
-                let email_parts: Vec<&str> = email.split('@').collect();
-                if email_parts.len() == 2 {
-                    result.push_str(&format!("{}", email_parts[0].color(colors.user_color)));
-                    result.push_str(&format!("{}", "@".color(colors.white)));
-                    result.push_str(&format!("{}", email_parts[1].color(colors.host_color)));
-                } else {
-                    result.push_str(&format!("{}", email.color(colors.user_color)));
-                }
+                result.push_str(&format_email_parts(email, colors, true));
             }
             result.push_str(&format!("{}", ": [".color(colors.white)));
             result.push_str(&format!("{}", repo_name.color(colors.git_color)));
@@ -291,13 +292,7 @@ pub fn format_git_prompt_line(
         }
         GitDisplayMode::Micro => {
             if let Some(email) = email {
-                let email_parts: Vec<&str> = email.split('@').collect();
-                if email_parts.len() == 2 {
-                    result.push_str(&format!("{}", "@".color(colors.white)));
-                    result.push_str(&format!("{}", email_parts[1].color(colors.host_color)));
-                } else {
-                    result.push_str(&format!("{}", email.color(colors.user_color)));
-                }
+                result.push_str(&format_email_parts(email, colors, false));
             }
             result.push_str(&format!("{}", ": [".color(colors.white)));
             result.push_str(&format!("{}", repo_name.color(colors.git_color)));
@@ -307,13 +302,7 @@ pub fn format_git_prompt_line(
         }
         GitDisplayMode::Nano => {
             if let Some(email) = email {
-                let email_parts: Vec<&str> = email.split('@').collect();
-                if email_parts.len() == 2 {
-                    result.push_str(&format!("{}", "@".color(colors.white)));
-                    result.push_str(&format!("{}", email_parts[1].color(colors.host_color)));
-                } else {
-                    result.push_str(&format!("{}", email.color(colors.user_color)));
-                }
+                result.push_str(&format_email_parts(email, colors, false));
             }
             result.push_str(&format!("{}", ": [".color(colors.white)));
             result.push_str(&format!("{}", repo_name.color(colors.git_color)));
