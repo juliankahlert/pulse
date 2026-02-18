@@ -538,8 +538,7 @@ pub fn truncate_git_path(parts: &[&str]) -> String {
 }
 
 /// Truncate non-git path for display
-/// Parameter reserved for future use - may affect formatting in inline mode
-pub fn truncate_non_git_path(root: &str, parts: &[&str], _inline: bool) -> String {
+pub fn truncate_non_git_path(root: &str, parts: &[&str]) -> String {
     if parts.is_empty() {
         root.to_string()
     } else if parts.len() > TRUNCATION_THRESHOLD {
@@ -601,7 +600,7 @@ pub fn build_non_git_path_string(
         )
     };
     let nav_parts: Vec<&str> = nav.split('/').filter(|s| !s.is_empty()).collect();
-    let path_display = truncate_non_git_path(root, &nav_parts, mode == "Inline");
+    let path_display = truncate_non_git_path(root, &nav_parts);
 
     let mut result = String::new();
     result.push_str(&format!("{}", user.color(colors.user_color)));
@@ -705,23 +704,23 @@ mod tests {
 
     #[test]
     fn test_truncate_non_git_path_inline() {
-        assert_eq!(truncate_non_git_path("~", &["a", "b"], true), "~ a › b");
+        assert_eq!(truncate_non_git_path("~", &["a", "b"]), "~ a › b");
     }
 
     #[test]
     fn test_truncate_non_git_path_dualline_empty() {
-        assert_eq!(truncate_non_git_path("/", &[], false), "/");
+        assert_eq!(truncate_non_git_path("/", &[]), "/");
     }
 
     #[test]
     fn test_truncate_non_git_path_tilde_empty() {
-        assert_eq!(truncate_non_git_path("~", &[], false), "~");
+        assert_eq!(truncate_non_git_path("~", &[]), "~");
     }
 
     #[test]
     fn test_truncate_non_git_path_dualline_three_parts() {
         assert_eq!(
-            truncate_non_git_path("~", &["home", "user", "docs"], false),
+            truncate_non_git_path("~", &["home", "user", "docs"]),
             "~ home › user › docs"
         );
     }
@@ -729,7 +728,7 @@ mod tests {
     #[test]
     fn test_truncate_non_git_path_dualline_four_parts() {
         assert_eq!(
-            truncate_non_git_path("/", &["usr", "local", "bin", "pulse"], false),
+            truncate_non_git_path("/", &["usr", "local", "bin", "pulse"]),
             "/ … local › bin › pulse"
         );
     }
