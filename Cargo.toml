@@ -6,6 +6,7 @@ description = "Pulse – A fast, configurable Rust PS1 prompt engine for modern 
 license = "MIT"
 
 [dev-dependencies]
+serial_test = "3"
 tempfile = "3"
 
 [dependencies]

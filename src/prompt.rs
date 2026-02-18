@@ -625,6 +625,7 @@ pub fn build_non_git_path_string(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
 
     #[test]
     fn test_is_in_git_repo() {
@@ -767,6 +768,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_get_exit_code_last_exit_code() {
         unsafe {
             std::env::remove_var("PIPESTATUS");
@@ -780,6 +782,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_get_exit_code_precedence() {
         unsafe {
             std::env::remove_var("PIPESTATUS");
