@@ -5,6 +5,7 @@
 
 use anyhow::{Result, anyhow};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 use crate::clrs::Clrs;
@@ -27,6 +28,9 @@ pub struct Config {
     pub segments: Vec<SegmentConfig>,
     /// Display mode: "DualLine" or "Inline".
     pub mode: Option<String>,
+    /// Cached color lookup for O(1) access.
+    #[serde(skip)]
+    pub segment_colors: HashMap<String, Clrs>,
 }
 
 impl Default for Config {
@@ -51,6 +55,7 @@ impl Default for Config {
                 },
             ],
             mode: Some("DualLine".to_string()),
+            segment_colors: HashMap::new(),
         }
     }
 }
@@ -85,6 +90,7 @@ impl Config {
             config.merge(user_config);
         }
 
+        config.build_color_cache();
         Ok(config)
     }
 
@@ -99,6 +105,17 @@ impl Config {
                 *existing = other_segment;
             } else {
                 self.segments.push(other_segment);
+            }
+        }
+        self.build_color_cache();
+    }
+
+    fn build_color_cache(&mut self) {
+        for segment in &self.segments {
+            if let Some(color_str) = &segment.color
+                && let Ok(color) = color_str.parse::<Clrs>()
+            {
+                self.segment_colors.insert(segment.name.clone(), color);
             }
         }
     }
@@ -129,15 +146,9 @@ impl Config {
     /// On terminals with truecolor support (24-bit), the specific clrs.cc
     /// RGB values are used instead.
     pub fn get_color(&self, name: &str) -> Clrs {
-        for segment in &self.segments {
-            if segment.name == name
-                && let Some(color_str) = &segment.color
-                && let Ok(color) = color_str.parse::<Clrs>()
-            {
-                return color;
-            }
+        if let Some(color) = self.segment_colors.get(name) {
+            return *color;
         }
-        // Default colors
         match name {
             "username" => Clrs::Blue,
             "hostname" => Clrs::Green,
@@ -165,6 +176,7 @@ mod tests {
     fn test_get_color_configured() {
         let mut config = Config::default();
         config.segments[0].color = Some("Red".to_string()); // username
+        config.build_color_cache();
         assert_eq!(config.get_color("username"), Clrs::Red);
         // Others should still be default
         assert_eq!(config.get_color("hostname"), Clrs::Green);
@@ -190,6 +202,7 @@ mod tests {
                 },
             ],
             mode: None,
+            segment_colors: HashMap::new(),
         };
         assert!(config.validate().is_ok());
     }
@@ -202,6 +215,7 @@ mod tests {
                 color: Some("InvalidColor".to_string()),
             }],
             mode: None,
+            segment_colors: HashMap::new(),
         };
         assert!(config.validate().is_err());
     }
@@ -214,6 +228,7 @@ mod tests {
                 color: Some("Blue".to_string()),
             }],
             mode: None,
+            segment_colors: HashMap::new(),
         };
         assert!(config.validate().is_err());
     }
@@ -226,6 +241,7 @@ mod tests {
                 color: Some("Blue".to_string()),
             }],
             mode: None,
+            segment_colors: HashMap::new(),
         };
         let other = Config {
             segments: vec![SegmentConfig {
@@ -233,6 +249,7 @@ mod tests {
                 color: Some("Red".to_string()),
             }],
             mode: None,
+            segment_colors: HashMap::new(),
         };
         base.merge(other);
         assert_eq!(base.get_color("username"), Clrs::Red);
@@ -246,6 +263,7 @@ mod tests {
                 color: Some("Blue".to_string()),
             }],
             mode: None,
+            segment_colors: HashMap::new(),
         };
         let other = Config {
             segments: vec![SegmentConfig {
@@ -253,6 +271,7 @@ mod tests {
                 color: Some("Green".to_string()),
             }],
             mode: None,
+            segment_colors: HashMap::new(),
         };
         base.merge(other);
         assert_eq!(base.get_color("username"), Clrs::Blue);
