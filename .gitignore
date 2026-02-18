@@ -24,3 +24,14 @@ target
 # Added by cargo
 
 /target
+
+/completions
+
+.*
+TASK*.md
+AGENTS.md
+/agents.d
+
+*.lock
+*.rpm
+opencode*
