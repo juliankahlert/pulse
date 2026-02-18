@@ -503,7 +503,7 @@ mod tests {
     fn test_get_username() {
         let username = get_username();
         assert!(username.is_ok());
-        let uname = username.unwrap();
+        let uname = username.expect("username should be Ok after is_ok check");
         assert!(!uname.is_empty());
     }
 
@@ -511,7 +511,7 @@ mod tests {
     fn test_get_current_directory() {
         let cwd = get_current_directory();
         assert!(cwd.is_ok());
-        let cwd_str = cwd.unwrap();
+        let cwd_str = cwd.expect("cwd should be Ok after is_ok check");
         assert!(!cwd_str.is_empty());
         // Should start with / or ~
         assert!(cwd_str.starts_with('/') || cwd_str.starts_with('~'));
@@ -521,7 +521,7 @@ mod tests {
     fn test_get_hostname() {
         let hostname = get_hostname();
         assert!(hostname.is_ok());
-        let hname = hostname.unwrap();
+        let hname = hostname.expect("hostname should be Ok after is_ok check");
         assert!(!hname.is_empty());
     }
 
@@ -530,7 +530,7 @@ mod tests {
         let branch = get_git_branch();
         // Since this is run in a git repo, should be Some
         assert!(branch.is_some());
-        let branch_name = branch.unwrap();
+        let branch_name = branch.expect("branch should be Some after is_some check");
         assert!(!branch_name.is_empty());
     }
 
@@ -539,7 +539,7 @@ mod tests {
         let repo_name = get_git_repo_name();
         // Since this is run in a git repo, should be Some
         assert!(repo_name.is_some());
-        let name = repo_name.unwrap();
+        let name = repo_name.expect("repo_name should be Some after is_some check");
         assert_eq!(name, "pulse");
         assert!(!name.is_empty());
     }
@@ -548,7 +548,7 @@ mod tests {
     fn test_get_git_info() {
         let lazy_info = get_git_info();
         assert!(lazy_info.get().is_some());
-        let info = lazy_info.get().unwrap();
+        let info = lazy_info.get().expect("lazy_info should be Some after is_some check");
         assert_eq!(info.repo_name, "pulse");
         assert!(!info.branch.is_empty());
         assert!(info.work_dir.is_absolute());
@@ -669,7 +669,7 @@ mod tests {
         let config = crate::config::Config::default();
         let prompt = generate_prompt(&config);
         assert!(prompt.is_ok());
-        let p = prompt.unwrap();
+        let p = prompt.expect("prompt should be Ok after is_ok check");
         // Should contain either $ or # depending on user
         assert!(p.contains("$") || p.contains("#"));
     }
@@ -679,7 +679,7 @@ mod tests {
         let config = crate::config::Config::default();
         let prompt = generate_prompt(&config);
         assert!(prompt.is_ok());
-        let p = prompt.unwrap();
+        let p = prompt.expect("prompt should be Ok after is_ok check");
         assert!(p.contains("$ "));
         assert!(p.lines().count() == 2); // DualLine mode
     }
@@ -692,7 +692,7 @@ mod tests {
         };
         let prompt = generate_prompt(&config);
         assert!(prompt.is_ok());
-        let p = prompt.unwrap();
+        let p = prompt.expect("prompt should be Ok after is_ok check");
         assert!(p.contains("$ "));
         assert!(p.lines().count() == 1); // Inline mode
     }
@@ -702,7 +702,7 @@ mod tests {
         let config = crate::config::Config::default();
         let prompt = generate_prompt(&config);
         assert!(prompt.is_ok());
-        let p = prompt.unwrap();
+        let p = prompt.expect("prompt should be Ok after is_ok check");
         // Should contain repo name and branch in Git format
         assert!(p.contains("pulse")); // repo name
         assert!(p.contains("[")); // start of Git info
@@ -716,7 +716,7 @@ mod tests {
     fn test_get_terminal_width() {
         let width = get_terminal_width();
         assert!(width.is_some());
-        assert!(width.unwrap() > 0);
+        assert!(width.expect("terminal width should be Some") > 0);
     }
 
     fn strip_ansi(s: &str) -> String {
