@@ -102,7 +102,7 @@ impl Config {
         if global_path.exists() {
             let content = std::fs::read_to_string(&global_path)?;
             let global_config: Self = serde_yml::from_str(&content)?;
-            config.validate()?;
+            global_config.validate()?;
             config.merge(global_config);
         }
 
