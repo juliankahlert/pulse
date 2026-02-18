@@ -3,11 +3,189 @@
 //! Generates shell prompts with user info, host, directory, and Git status.
 //! Supports different modes and customizable colors.
 
+use std::fmt;
+
 use anyhow::{Result, anyhow};
 
 use crate::clrs::Clrs;
 use crate::config::Config;
+use crossterm::terminal::size;
 use owo_colors::OwoColorize;
+
+pub fn get_terminal_width() -> Option<u16> {
+    size().ok().map(|(w, _)| w)
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct PromptColors {
+    pub user_color: owo_colors::DynColors,
+    pub host_color: owo_colors::DynColors,
+    pub git_color: owo_colors::DynColors,
+    pub white: owo_colors::DynColors,
+    pub dir_color: owo_colors::DynColors,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GitDisplayMode {
+    Full,
+    Mini,
+    Micro,
+    Nano,
+}
+
+impl fmt::Display for GitDisplayMode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            GitDisplayMode::Full => write!(f, "Full"),
+            GitDisplayMode::Mini => write!(f, "Mini"),
+            GitDisplayMode::Micro => write!(f, "Micro"),
+            GitDisplayMode::Nano => write!(f, "Nano"),
+        }
+    }
+}
+
+pub fn select_display_mode(
+    terminal_width: u16,
+    email: Option<&str>,
+    repo_name: &str,
+    branch: &str,
+    nav_parts: &[&str],
+    colors: &PromptColors,
+) -> GitDisplayMode {
+    let modes = [
+        GitDisplayMode::Full,
+        GitDisplayMode::Mini,
+        GitDisplayMode::Micro,
+        GitDisplayMode::Nano,
+    ];
+
+    for mode in modes {
+        let rendered = format_git_prompt_line(mode, email, repo_name, branch, nav_parts, colors);
+        let visual_width = strip_ansi(&rendered).len();
+        if visual_width <= terminal_width as usize {
+            return mode;
+        }
+    }
+
+    GitDisplayMode::Nano
+}
+
+fn strip_ansi(s: &str) -> String {
+    let mut result = String::new();
+    let mut chars = s.chars().peekable();
+
+    while let Some(c) = chars.next() {
+        if c == '\x1b' && chars.peek() == Some(&'[') {
+            chars.next();
+            while let Some(&next) = chars.peek() {
+                if next.is_ascii_alphabetic() {
+                    chars.next();
+                    break;
+                }
+                chars.next();
+            }
+            continue;
+        }
+        result.push(c);
+    }
+    result
+}
+
+pub fn format_git_prompt_line(
+    mode: GitDisplayMode,
+    email: Option<&str>,
+    repo_name: &str,
+    branch: &str,
+    nav_parts: &[&str],
+    colors: &PromptColors,
+) -> String {
+    let mut result = String::new();
+
+    match mode {
+        GitDisplayMode::Full => {
+            if let Some(email) = email {
+                let email_parts: Vec<&str> = email.split('@').collect();
+                if email_parts.len() == 2 {
+                    result.push_str(&format!("{}", email_parts[0].color(colors.user_color)));
+                    result.push_str(&format!("{}", "@".color(colors.white)));
+                    result.push_str(&format!("{}", email_parts[1].color(colors.host_color)));
+                } else {
+                    result.push_str(&format!("{}", email.color(colors.user_color)));
+                }
+            }
+            result.push_str(&format!("{}", ": [".color(colors.white)));
+            result.push_str(&format!("{}", repo_name.color(colors.git_color)));
+            result.push_str(&format!("{}", " : ".color(colors.white)));
+            result.push_str(&format!("{}", branch.color(colors.git_color)));
+            result.push_str(&format!("{}", "] ".color(colors.white)));
+        }
+        GitDisplayMode::Mini => {
+            if let Some(email) = email {
+                let email_parts: Vec<&str> = email.split('@').collect();
+                if email_parts.len() == 2 {
+                    result.push_str(&format!("{}", email_parts[0].color(colors.user_color)));
+                    result.push_str(&format!("{}", "@".color(colors.white)));
+                    result.push_str(&format!("{}", email_parts[1].color(colors.host_color)));
+                } else {
+                    result.push_str(&format!("{}", email.color(colors.user_color)));
+                }
+            }
+            result.push_str(&format!("{}", ": [".color(colors.white)));
+            result.push_str(&format!("{}", repo_name.color(colors.git_color)));
+            result.push_str(&format!("{}", " : ".color(colors.white)));
+            result.push_str(&format!("{}", "…".color(colors.git_color)));
+            result.push_str(&format!("{}", "] ".color(colors.white)));
+        }
+        GitDisplayMode::Micro => {
+            if let Some(email) = email {
+                let email_parts: Vec<&str> = email.split('@').collect();
+                if email_parts.len() == 2 {
+                    result.push_str(&format!("{}", "@".color(colors.white)));
+                    result.push_str(&format!("{}", email_parts[1].color(colors.host_color)));
+                } else {
+                    result.push_str(&format!("{}", email.color(colors.user_color)));
+                }
+            }
+            result.push_str(&format!("{}", ": [".color(colors.white)));
+            result.push_str(&format!("{}", repo_name.color(colors.git_color)));
+            result.push_str(&format!("{}", " : ".color(colors.white)));
+            result.push_str(&format!("{}", "…".color(colors.git_color)));
+            result.push_str(&format!("{}", "] ".color(colors.white)));
+        }
+        GitDisplayMode::Nano => {
+            if let Some(email) = email {
+                let email_parts: Vec<&str> = email.split('@').collect();
+                if email_parts.len() == 2 {
+                    result.push_str(&format!("{}", "@".color(colors.white)));
+                    result.push_str(&format!("{}", email_parts[1].color(colors.host_color)));
+                } else {
+                    result.push_str(&format!("{}", email.color(colors.user_color)));
+                }
+            }
+            result.push_str(&format!("{}", ": [".color(colors.white)));
+            result.push_str(&format!("{}", repo_name.color(colors.git_color)));
+            result.push_str(&format!("{}", "] ".color(colors.white)));
+            let last_dir = nav_parts.last().map(|s| s.to_string()).unwrap_or_default();
+            match nav_parts.len() {
+                0 => {}
+                1 => {
+                    result.push_str(&format!("{}", last_dir.color(colors.dir_color)));
+                }
+                _ => {
+                    result.push_str(&format!("{}", "… › ".color(colors.white)));
+                    result.push_str(&format!("{}", last_dir.color(colors.dir_color)));
+                }
+            }
+        }
+    }
+
+    if mode != GitDisplayMode::Nano {
+        let nav = truncate_git_path(nav_parts);
+        result.push_str(&format!("{}", nav.color(colors.dir_color)));
+    }
+
+    result
+}
 
 /// Get the current username.
 pub fn get_username() -> Result<String> {
@@ -68,9 +246,18 @@ pub fn generate_prompt(config: &Config) -> Result<String> {
     let git_color = config.get_color("git_branch").to_dyn();
     let white = Clrs::White.to_dyn();
 
+    let colors = PromptColors {
+        user_color,
+        host_color,
+        git_color,
+        white,
+        dir_color,
+    };
+
+    let terminal_width = get_terminal_width().unwrap_or(120);
+
     let mut first_line = String::new();
     if let Some(repo_name) = git_repo {
-        // Git mode
         let repo_root = std::fs::canonicalize(
             gix::discover(".")?
                 .work_dir()
@@ -81,27 +268,14 @@ pub fn generate_prompt(config: &Config) -> Result<String> {
         let relative_str = relative.to_string_lossy();
         let parts: Vec<&str> = relative_str.split('/').filter(|s| !s.is_empty()).collect();
         let branch = get_git_branch().unwrap_or_else(|| "unknown".to_string());
-        let nav = truncate_git_path(&parts);
+        let git_email = get_git_user_email();
+        let email = git_email.as_deref();
 
-        // Show email with local part in user color, domain in host color
-        if let Some(email) = get_git_user_email() {
-            let email_parts: Vec<&str> = email.split('@').collect();
-            if email_parts.len() == 2 {
-                first_line.push_str(&format!("{}", email_parts[0].color(user_color)));
-                first_line.push_str(&format!("{}", "@".color(white)));
-                first_line.push_str(&format!("{}", email_parts[1].color(host_color)));
-            } else {
-                first_line.push_str(&format!("{}", email.color(user_color)));
-            }
-        } else {
-            first_line.push_str(&format!("{}", user.color(user_color)));
-        }
-        first_line.push_str(&format!("{}", ": [".color(white)));
-        first_line.push_str(&format!("{}", repo_name.color(git_color)));
-        first_line.push_str(&format!("{}", " : ".color(white)));
-        first_line.push_str(&format!("{}", branch.color(git_color)));
-        first_line.push_str(&format!("{}", "] ".color(white)));
-        first_line.push_str(&format!("{}", nav.color(dir_color)));
+        let display_mode =
+            select_display_mode(terminal_width, email, &repo_name, &branch, &parts, &colors);
+
+        first_line =
+            format_git_prompt_line(display_mode, email, &repo_name, &branch, &parts, &colors);
     } else {
         // Non-git mode
         let (root, nav) = if dir == "~" {
@@ -401,5 +575,354 @@ mod tests {
         assert!(p.contains("]")); // end of Git info
         // Should have navigation path
         assert!(p.lines().count() == 2);
+    }
+
+    #[test]
+    fn test_get_terminal_width() {
+        let width = get_terminal_width();
+        assert!(width.is_some());
+        assert!(width.unwrap() > 0);
+    }
+
+    fn strip_ansi(s: &str) -> String {
+        let mut result = String::new();
+        let mut chars = s.chars().peekable();
+
+        while let Some(c) = chars.next() {
+            if c == '\x1b' {
+                if chars.peek() == Some(&'[') {
+                    chars.next(); // skip '['
+                    // Skip until we hit a letter (the end of the ANSI sequence)
+                    while let Some(&next) = chars.peek() {
+                        if next.is_ascii_alphabetic() {
+                            chars.next(); // skip the letter (e.g., 'm')
+                            break;
+                        }
+                        chars.next();
+                    }
+                    continue;
+                }
+            }
+            result.push(c);
+        }
+        result
+    }
+
+    #[test]
+    fn test_git_display_mode_display() {
+        assert_eq!(GitDisplayMode::Full.to_string(), "Full");
+        assert_eq!(GitDisplayMode::Mini.to_string(), "Mini");
+        assert_eq!(GitDisplayMode::Micro.to_string(), "Micro");
+        assert_eq!(GitDisplayMode::Nano.to_string(), "Nano");
+    }
+
+    #[test]
+    fn test_format_git_prompt_line_full_mode() {
+        use crate::clrs::Clrs;
+        let colors = PromptColors {
+            user_color: Clrs::Aqua.to_dyn(),
+            host_color: Clrs::Yellow.to_dyn(),
+            git_color: Clrs::Green.to_dyn(),
+            white: Clrs::White.to_dyn(),
+            dir_color: Clrs::Blue.to_dyn(),
+        };
+
+        let result = format_git_prompt_line(
+            GitDisplayMode::Full,
+            Some("user@example.com"),
+            "myrepo",
+            "main",
+            &["src", "main"],
+            &colors,
+        );
+
+        let clean = strip_ansi(&result);
+        assert!(clean.contains("user"));
+        assert!(clean.contains("@"));
+        assert!(clean.contains("example.com"));
+        assert!(clean.contains("[myrepo"));
+        assert!(clean.contains(" : main]"));
+        assert!(clean.contains("src › main"));
+    }
+
+    #[test]
+    fn test_format_git_prompt_line_mini_mode() {
+        use crate::clrs::Clrs;
+        let colors = PromptColors {
+            user_color: Clrs::Aqua.to_dyn(),
+            host_color: Clrs::Yellow.to_dyn(),
+            git_color: Clrs::Green.to_dyn(),
+            white: Clrs::White.to_dyn(),
+            dir_color: Clrs::Blue.to_dyn(),
+        };
+
+        let result = format_git_prompt_line(
+            GitDisplayMode::Mini,
+            Some("user@example.com"),
+            "myrepo",
+            "main",
+            &["dir1", "dir2", "dir3"],
+            &colors,
+        );
+
+        let clean = strip_ansi(&result);
+        assert!(clean.contains("user"));
+        assert!(clean.contains("@example.com"));
+        assert!(clean.contains("[myrepo"));
+        assert!(clean.contains(" : …]"));
+        assert!(clean.contains("dir1 › dir2 › dir3"));
+    }
+
+    #[test]
+    fn test_format_git_prompt_line_micro_mode() {
+        use crate::clrs::Clrs;
+        let colors = PromptColors {
+            user_color: Clrs::Aqua.to_dyn(),
+            host_color: Clrs::Yellow.to_dyn(),
+            git_color: Clrs::Green.to_dyn(),
+            white: Clrs::White.to_dyn(),
+            dir_color: Clrs::Blue.to_dyn(),
+        };
+
+        let result = format_git_prompt_line(
+            GitDisplayMode::Micro,
+            Some("user@example.com"),
+            "myrepo",
+            "feature-branch",
+            &["src", "utils", "helper"],
+            &colors,
+        );
+
+        let clean = strip_ansi(&result);
+        assert!(clean.starts_with("@example.com"));
+        assert!(!clean.contains("user@"));
+        assert!(clean.contains("[myrepo"));
+        assert!(clean.contains(" : …]"));
+        assert!(clean.contains("src › utils › helper"));
+    }
+
+    #[test]
+    fn test_format_git_prompt_line_nano_mode() {
+        use crate::clrs::Clrs;
+        let colors = PromptColors {
+            user_color: Clrs::Aqua.to_dyn(),
+            host_color: Clrs::Yellow.to_dyn(),
+            git_color: Clrs::Green.to_dyn(),
+            white: Clrs::White.to_dyn(),
+            dir_color: Clrs::Blue.to_dyn(),
+        };
+
+        let result = format_git_prompt_line(
+            GitDisplayMode::Nano,
+            Some("user@example.com"),
+            "myrepo",
+            "develop",
+            &["src", "lib", "core"],
+            &colors,
+        );
+
+        let clean = strip_ansi(&result);
+        assert!(clean.starts_with("@example.com"));
+        assert!(!clean.contains("user@"));
+        assert!(clean.contains("[myrepo]"));
+        assert!(!clean.contains(" : "));
+        assert!(clean.contains("… › core"));
+    }
+
+    #[test]
+    fn test_format_git_prompt_line_no_email() {
+        use crate::clrs::Clrs;
+        let colors = PromptColors {
+            user_color: Clrs::Aqua.to_dyn(),
+            host_color: Clrs::Yellow.to_dyn(),
+            git_color: Clrs::Green.to_dyn(),
+            white: Clrs::White.to_dyn(),
+            dir_color: Clrs::Blue.to_dyn(),
+        };
+
+        let result = format_git_prompt_line(
+            GitDisplayMode::Full,
+            None,
+            "repo",
+            "main",
+            &["dir"],
+            &colors,
+        );
+
+        let clean = strip_ansi(&result);
+        assert!(clean.contains(": [repo"));
+        assert!(clean.contains(" : main]"));
+        assert!(clean.contains("dir"));
+    }
+
+    #[test]
+    fn test_format_git_prompt_line_nano_single_dir() {
+        use crate::clrs::Clrs;
+        let colors = PromptColors {
+            user_color: Clrs::Aqua.to_dyn(),
+            host_color: Clrs::Yellow.to_dyn(),
+            git_color: Clrs::Green.to_dyn(),
+            white: Clrs::White.to_dyn(),
+            dir_color: Clrs::Blue.to_dyn(),
+        };
+
+        let result = format_git_prompt_line(
+            GitDisplayMode::Nano,
+            Some("test@domain.org"),
+            "project",
+            "bugfix",
+            &["subdir"],
+            &colors,
+        );
+
+        let clean = strip_ansi(&result);
+        assert_eq!(clean, "@domain.org: [project] subdir");
+    }
+
+    #[test]
+    fn test_format_git_prompt_line_nano_empty_nav() {
+        use crate::clrs::Clrs;
+        let colors = PromptColors {
+            user_color: Clrs::Aqua.to_dyn(),
+            host_color: Clrs::Yellow.to_dyn(),
+            git_color: Clrs::Green.to_dyn(),
+            white: Clrs::White.to_dyn(),
+            dir_color: Clrs::Blue.to_dyn(),
+        };
+
+        let result = format_git_prompt_line(
+            GitDisplayMode::Nano,
+            Some("git@domain"),
+            "myrepo",
+            "main",
+            &[],
+            &colors,
+        );
+
+        let clean = strip_ansi(&result);
+        assert_eq!(clean, "@domain: [myrepo] ");
+        assert!(!clean.contains("…"));
+        assert!(!clean.contains("›"));
+    }
+
+    #[test]
+    fn test_format_git_prompt_line_micro_empty_nav() {
+        use crate::clrs::Clrs;
+        let colors = PromptColors {
+            user_color: Clrs::Aqua.to_dyn(),
+            host_color: Clrs::Yellow.to_dyn(),
+            git_color: Clrs::Green.to_dyn(),
+            white: Clrs::White.to_dyn(),
+            dir_color: Clrs::Blue.to_dyn(),
+        };
+
+        let result = format_git_prompt_line(
+            GitDisplayMode::Micro,
+            Some("dev@test.io"),
+            "code",
+            "HEAD",
+            &[],
+            &colors,
+        );
+
+        let clean = strip_ansi(&result);
+        assert!(clean.contains("@test.io"));
+        assert!(clean.contains("[code : …]"));
+    }
+
+    #[test]
+    fn test_format_git_prompt_line_full_format() {
+        use crate::clrs::Clrs;
+        let colors = PromptColors {
+            user_color: Clrs::Aqua.to_dyn(),
+            host_color: Clrs::Yellow.to_dyn(),
+            git_color: Clrs::Green.to_dyn(),
+            white: Clrs::White.to_dyn(),
+            dir_color: Clrs::Blue.to_dyn(),
+        };
+
+        let result = format_git_prompt_line(
+            GitDisplayMode::Full,
+            Some("git@email"),
+            "repo",
+            "branch",
+            &["dir1", "dir2", "dir3"],
+            &colors,
+        );
+
+        let clean = strip_ansi(&result);
+        assert_eq!(clean, "git@email: [repo : branch] dir1 › dir2 › dir3");
+    }
+
+    #[test]
+    fn test_format_git_prompt_line_mini_format() {
+        use crate::clrs::Clrs;
+        let colors = PromptColors {
+            user_color: Clrs::Aqua.to_dyn(),
+            host_color: Clrs::Yellow.to_dyn(),
+            git_color: Clrs::Green.to_dyn(),
+            white: Clrs::White.to_dyn(),
+            dir_color: Clrs::Blue.to_dyn(),
+        };
+
+        let result = format_git_prompt_line(
+            GitDisplayMode::Mini,
+            Some("git@email"),
+            "repo",
+            "branch",
+            &["dir", "dir2", "dir3"],
+            &colors,
+        );
+
+        let clean = strip_ansi(&result);
+        assert_eq!(clean, "git@email: [repo : …] dir › dir2 › dir3");
+    }
+
+    #[test]
+    fn test_format_git_prompt_line_micro_format() {
+        use crate::clrs::Clrs;
+        let colors = PromptColors {
+            user_color: Clrs::Aqua.to_dyn(),
+            host_color: Clrs::Yellow.to_dyn(),
+            git_color: Clrs::Green.to_dyn(),
+            white: Clrs::White.to_dyn(),
+            dir_color: Clrs::Blue.to_dyn(),
+        };
+
+        let result = format_git_prompt_line(
+            GitDisplayMode::Micro,
+            Some("git@email"),
+            "repo",
+            "branch",
+            &["dir", "dir2", "dir3"],
+            &colors,
+        );
+
+        let clean = strip_ansi(&result);
+        assert_eq!(clean, "@email: [repo : …] dir › dir2 › dir3");
+    }
+
+    #[test]
+    fn test_format_git_prompt_line_nano_format() {
+        use crate::clrs::Clrs;
+        let colors = PromptColors {
+            user_color: Clrs::Aqua.to_dyn(),
+            host_color: Clrs::Yellow.to_dyn(),
+            git_color: Clrs::Green.to_dyn(),
+            white: Clrs::White.to_dyn(),
+            dir_color: Clrs::Blue.to_dyn(),
+        };
+
+        let result = format_git_prompt_line(
+            GitDisplayMode::Nano,
+            Some("git@domain"),
+            "repo",
+            "branch",
+            &["dir1", "dir2", "dir3"],
+            &colors,
+        );
+
+        let clean = strip_ansi(&result);
+        assert_eq!(clean, "@domain: [repo] … › dir3");
     }
 }
