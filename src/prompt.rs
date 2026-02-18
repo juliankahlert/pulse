@@ -379,57 +379,10 @@ pub fn generate_prompt(config: &Config) -> Result<String> {
                 &colors,
             );
         } else {
-            let (root, nav) = if dir == "~" {
-                ("~", "".to_string())
-            } else if dir.starts_with("~/") {
-                (
-                    "~",
-                    dir.strip_prefix("~/")
-                        .map(|s| s.to_string())
-                        .unwrap_or_default(),
-                )
-            } else {
-                (
-                    "/",
-                    dir.strip_prefix("/")
-                        .map(|s| s.to_string())
-                        .unwrap_or_default(),
-                )
-            };
-            let nav_parts: Vec<&str> = nav.split('/').filter(|s| !s.is_empty()).collect();
-            let path_display = truncate_non_git_path(root, &nav_parts, mode == "Inline");
-            first_line.push_str(&format!("{}", user.color(user_color)));
-            first_line.push_str(&format!("{}", "@".color(white)));
-            first_line.push_str(&format!("{}", host.color(host_color)));
-            first_line.push_str(&format!("{}", ":".color(white)));
-            first_line.push_str(&format!("{}", path_display.color(dir_color)));
+            first_line.push_str(&build_non_git_path_string(&dir, &user, &host, &colors, mode));
         }
     } else {
-        // Non-git mode
-        let (root, nav) = if dir == "~" {
-            ("~", "".to_string())
-        } else if dir.starts_with("~/") {
-            (
-                "~",
-                dir.strip_prefix("~/")
-                    .map(|s| s.to_string())
-                    .unwrap_or_default(),
-            )
-        } else {
-            (
-                "/",
-                dir.strip_prefix("/")
-                    .map(|s| s.to_string())
-                    .unwrap_or_default(),
-            )
-        };
-        let nav_parts: Vec<&str> = nav.split('/').filter(|s| !s.is_empty()).collect();
-        let path_display = truncate_non_git_path(root, &nav_parts, mode == "Inline");
-        first_line.push_str(&format!("{}", user.color(user_color)));
-        first_line.push_str(&format!("{}", "@".color(white)));
-        first_line.push_str(&format!("{}", host.color(host_color)));
-        first_line.push_str(&format!("{}", ":".color(white)));
-        first_line.push_str(&format!("{}", path_display.color(dir_color)));
+        first_line.push_str(&build_non_git_path_string(&dir, &user, &host, &colors, mode));
     }
 
     let prompt_symbol = if is_root_user() { "#" } else { "$" };
@@ -507,6 +460,69 @@ pub fn truncate_non_git_path(root: &str, parts: &[&str], _inline: bool) -> Strin
     } else {
         format!("{} {}", root, parts.join(" › "))
     }
+}
+
+/// Builds the user@host:path string for non-git mode.
+///
+/// This helper handles:
+/// - Path normalization (extracting root ~ or / and navigation portion)
+/// - Navigation splitting by '/'
+/// - Truncation of long paths
+/// - Building the colored user@host:path string
+///
+/// # Arguments
+/// * `dir` - The current directory path
+/// * `user` - The username string
+/// * `host` - The hostname string
+/// * `user_color` - Color for the username
+/// * `host_color` - Color for the hostname
+/// * `dir_color` - Color for the directory path
+/// * `white` - Color for the separator characters (@ and :)
+/// * `mode` - Display mode ("Inline" or "DualLine")
+///
+/// # Arguments
+/// * `dir` - The current directory path
+/// * `user` - The username string
+/// * `host` - The hostname string
+/// * `colors` - The PromptColors struct containing color definitions
+/// * `mode` - Display mode ("Inline" or "DualLine")
+///
+/// # Returns
+/// A formatted string with the user@host:path components colored
+pub fn build_non_git_path_string(
+    dir: &str,
+    user: &str,
+    host: &str,
+    colors: &PromptColors,
+    mode: &str,
+) -> String {
+    let (root, nav) = if dir == "~" {
+        ("~", "".to_string())
+    } else if dir.starts_with("~/") {
+        (
+            "~",
+            dir.strip_prefix("~/")
+                .map(|s| s.to_string())
+                .unwrap_or_default(),
+        )
+    } else {
+        (
+            "/",
+            dir.strip_prefix("/")
+                .map(|s| s.to_string())
+                .unwrap_or_default(),
+        )
+    };
+    let nav_parts: Vec<&str> = nav.split('/').filter(|s| !s.is_empty()).collect();
+    let path_display = truncate_non_git_path(root, &nav_parts, mode == "Inline");
+
+    let mut result = String::new();
+    result.push_str(&format!("{}", user.color(colors.user_color)));
+    result.push_str(&format!("{}", "@".color(colors.white)));
+    result.push_str(&format!("{}", host.color(colors.host_color)));
+    result.push_str(&format!("{}", ":".color(colors.white)));
+    result.push_str(&format!("{}", path_display.color(colors.dir_color)));
+    result
 }
 
 #[cfg(test)]
