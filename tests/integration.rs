@@ -4,7 +4,7 @@ use std::process::Command;
 fn test_pulse_binary_runs_and_outputs_prompt() {
     // Build the release binary first
     let build_status = Command::new("cargo")
-        .args(&["build", "--release"])
+        .args(["build", "--release"])
         .status()
         .expect("Failed to build pulse");
 

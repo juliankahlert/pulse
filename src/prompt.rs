@@ -3,6 +3,7 @@
 //! Generates shell prompts with user info, host, directory, and Git status.
 //! Supports different modes and customizable colors.
 
+use std::cell::OnceCell;
 use std::fmt;
 use std::path::PathBuf;
 
@@ -15,6 +16,25 @@ use owo_colors::OwoColorize;
 
 pub fn get_terminal_width() -> Option<u16> {
     size().ok().map(|(w, _)| w)
+}
+
+pub fn is_in_git_repo() -> bool {
+    let mut current = match std::env::current_dir() {
+        Ok(p) => p,
+        Err(_) => return false,
+    };
+
+    loop {
+        if current.join(".git").is_dir() {
+            return true;
+        }
+
+        if !current.pop() {
+            break;
+        }
+    }
+
+    false
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -53,37 +73,76 @@ pub struct GitInfo {
     pub work_dir: PathBuf,
 }
 
-pub fn get_git_info() -> Option<GitInfo> {
-    let repo = gix::discover(".").ok()?;
-    let work_dir = repo.work_dir()?.to_path_buf();
-    let work_dir = std::fs::canonicalize(&work_dir).ok()?;
-    let repo_name = work_dir
-        .file_name()
-        .and_then(|n| n.to_str())
-        .map(|s| s.to_string())?;
+pub struct LazyGitInfo {
+    cached: OnceCell<Option<GitInfo>>,
+}
 
-    let mut head = repo.head().ok()?;
-    let branch = if head.is_detached() {
-        head.try_peel_to_id_in_place()
-            .ok()
-            .flatten()
-            .map(|id| id.to_hex_with_len(7).to_string())
-            .unwrap_or_else(|| "unknown".to_string())
-    } else {
-        head.referent_name()
-            .map(|name| name.shorten().to_string())
-            .unwrap_or_else(|| "unknown".to_string())
-    };
+impl LazyGitInfo {
+    pub fn new() -> Self {
+        Self {
+            cached: OnceCell::new(),
+        }
+    }
 
-    let config = repo.config_snapshot();
-    let user_email = config.string("user.email").map(|s| s.to_string());
+    pub fn get(&self) -> Option<&GitInfo> {
+        self.cached
+            .get_or_init(|| {
+                let repo = match gix::discover(".") {
+                    Ok(r) => r,
+                    Err(_) => return None,
+                };
+                let work_dir = match repo.work_dir() {
+                    Some(w) => w,
+                    None => return None,
+                };
+                let work_dir = match std::fs::canonicalize(work_dir) {
+                    Ok(w) => w,
+                    Err(_) => return None,
+                };
+                let repo_name = match work_dir.file_name().and_then(|n| n.to_str()) {
+                    Some(n) => n.to_string(),
+                    None => return None,
+                };
 
-    Some(GitInfo {
-        repo_name,
-        branch,
-        user_email,
-        work_dir,
-    })
+                let mut head = match repo.head() {
+                    Ok(h) => h,
+                    Err(_) => return None,
+                };
+                let branch = if head.is_detached() {
+                    head.try_peel_to_id_in_place()
+                        .ok()
+                        .flatten()
+                        .map(|id| id.to_hex_with_len(7).to_string())
+                        .unwrap_or_else(|| "unknown".to_string())
+                } else {
+                    head.referent_name()
+                        .map(|name| name.shorten().to_string())
+                        .unwrap_or_else(|| "unknown".to_string())
+                };
+
+                let config = repo.config_snapshot();
+                let user_email = config.string("user.email").map(|s| s.to_string());
+
+                Some(GitInfo {
+                    repo_name,
+                    branch,
+                    user_email,
+                    work_dir,
+                })
+            })
+            .as_ref()
+    }
+}
+
+impl Default for LazyGitInfo {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[allow(dead_code)]
+pub fn get_git_info() -> LazyGitInfo {
+    LazyGitInfo::new()
 }
 
 pub fn select_display_mode(
@@ -236,18 +295,8 @@ pub fn get_username() -> Result<String> {
         .ok_or_else(|| anyhow::anyhow!("Unable to get username"))
 }
 
-/// Get the git user email for the current repository if in a git repo
-pub fn get_git_user_email() -> Option<String> {
-    let repo = gix::discover(".").ok()?;
-    let config = repo.config_snapshot();
-    config.string("user.email").map(|s| s.to_string())
-}
-
-/// Get the user info for prompt: git user.email if in git repo, else system username
+/// Get the user info for prompt: system username
 pub fn get_prompt_user() -> Result<String> {
-    if let Some(email) = get_git_user_email() {
-        return Ok(email);
-    }
     get_username()
 }
 
@@ -279,7 +328,12 @@ pub fn generate_prompt(config: &Config) -> Result<String> {
     let user = get_prompt_user()?;
     let host = get_hostname()?;
     let dir = get_current_directory()?;
-    let git_info = get_git_info();
+    let in_git = is_in_git_repo();
+    let git_info = if in_git {
+        Some(LazyGitInfo::new())
+    } else {
+        None
+    };
     let exit_code = get_exit_code();
 
     let user_color = config.get_color("username").to_dyn();
@@ -299,30 +353,47 @@ pub fn generate_prompt(config: &Config) -> Result<String> {
     let terminal_width = get_terminal_width().unwrap_or(120);
 
     let mut first_line = String::new();
-    if let Some(info) = git_info {
-        let current = std::env::current_dir()?;
-        let relative = current.strip_prefix(&info.work_dir).unwrap_or(&current);
-        let relative_str = relative.to_string_lossy();
-        let parts: Vec<&str> = relative_str.split('/').filter(|s| !s.is_empty()).collect();
-        let email = info.user_email.as_deref();
+    if let Some(ref lazy_info) = git_info {
+        if let Some(info) = lazy_info.get() {
+            let current = std::env::current_dir()?;
+            let relative = current.strip_prefix(&info.work_dir).unwrap_or(&current);
+            let relative_str = relative.to_string_lossy();
+            let parts: Vec<&str> = relative_str.split('/').filter(|s| !s.is_empty()).collect();
+            let email = info.user_email.as_deref();
 
-        let display_mode = select_display_mode(
-            terminal_width,
-            email,
-            &info.repo_name,
-            &info.branch,
-            &parts,
-            &colors,
-        );
+            let display_mode = select_display_mode(
+                terminal_width,
+                email,
+                &info.repo_name,
+                &info.branch,
+                &parts,
+                &colors,
+            );
 
-        first_line = format_git_prompt_line(
-            display_mode,
-            email,
-            &info.repo_name,
-            &info.branch,
-            &parts,
-            &colors,
-        );
+            first_line = format_git_prompt_line(
+                display_mode,
+                email,
+                &info.repo_name,
+                &info.branch,
+                &parts,
+                &colors,
+            );
+        } else {
+            let (root, nav) = if dir == "~" {
+                ("~", "".to_string())
+            } else if dir.starts_with("~/") {
+                ("~", dir.strip_prefix("~/").unwrap().to_string())
+            } else {
+                ("/", dir.strip_prefix("/").unwrap().to_string())
+            };
+            let nav_parts: Vec<&str> = nav.split('/').filter(|s| !s.is_empty()).collect();
+            let path_display = truncate_non_git_path(root, &nav_parts, mode == "Inline");
+            first_line.push_str(&format!("{}", user.color(user_color)));
+            first_line.push_str(&format!("{}", "@".color(white)));
+            first_line.push_str(&format!("{}", host.color(host_color)));
+            first_line.push_str(&format!("{}", ":".color(white)));
+            first_line.push_str(&format!("{}", path_display.color(dir_color)));
+        }
     } else {
         // Non-git mode
         let (root, nav) = if dir == "~" {
@@ -423,6 +494,12 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_is_in_git_repo() {
+        // This is run in a git repo, should return true
+        assert!(is_in_git_repo());
+    }
+
+    #[test]
     fn test_get_username() {
         let username = get_username();
         assert!(username.is_ok());
@@ -469,10 +546,9 @@ mod tests {
 
     #[test]
     fn test_get_git_info() {
-        let info = get_git_info();
-        // Since this is run in a git repo, should be Some
-        assert!(info.is_some());
-        let info = info.unwrap();
+        let lazy_info = get_git_info();
+        assert!(lazy_info.get().is_some());
+        let info = lazy_info.get().unwrap();
         assert_eq!(info.repo_name, "pulse");
         assert!(!info.branch.is_empty());
         assert!(info.work_dir.is_absolute());
@@ -585,10 +661,7 @@ mod tests {
 
     #[test]
     fn test_is_root_user() {
-        // This test will pass on non-root systems (which is expected for development)
-        let is_root = is_root_user();
-        // We can't guarantee the test environment, so just verify the function runs
-        assert!(!is_root || is_root); // This always passes, just testing the function doesn't panic
+        let _ = is_root_user();
     }
 
     #[test]
@@ -613,8 +686,10 @@ mod tests {
 
     #[test]
     fn test_generate_prompt_inline_git() {
-        let mut config = crate::config::Config::default();
-        config.mode = Some("Inline".to_string());
+        let config = crate::config::Config {
+            mode: Some("Inline".to_string()),
+            ..Default::default()
+        };
         let prompt = generate_prompt(&config);
         assert!(prompt.is_ok());
         let p = prompt.unwrap();
@@ -649,19 +724,16 @@ mod tests {
         let mut chars = s.chars().peekable();
 
         while let Some(c) = chars.next() {
-            if c == '\x1b' {
-                if chars.peek() == Some(&'[') {
-                    chars.next(); // skip '['
-                    // Skip until we hit a letter (the end of the ANSI sequence)
-                    while let Some(&next) = chars.peek() {
-                        if next.is_ascii_alphabetic() {
-                            chars.next(); // skip the letter (e.g., 'm')
-                            break;
-                        }
-                        chars.next();
+            if c == '\x1b' && chars.peek() == Some(&'[') {
+                chars.next(); // skip '['
+                while let Some(&next) = chars.peek() {
+                    if next.is_ascii_alphabetic() {
+                        chars.next(); // skip the letter (e.g., 'm')
+                        break;
                     }
-                    continue;
+                    chars.next();
                 }
+                continue;
             }
             result.push(c);
         }
