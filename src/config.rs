@@ -67,7 +67,7 @@ impl Config {
         let global_path = PathBuf::from("/etc/pulse/config.yaml");
         if global_path.exists() {
             let content = std::fs::read_to_string(&global_path)?;
-            let global_config: Self = serde_yaml::from_str(&content)?;
+            let global_config: Self = serde_yml::from_str(&content)?;
             config.validate()?;
             config.merge(global_config);
         }
@@ -80,7 +80,7 @@ impl Config {
             .join("config.yaml");
         if user_path.exists() {
             let content = std::fs::read_to_string(&user_path)?;
-            let user_config: Self = serde_yaml::from_str(&content)?;
+            let user_config: Self = serde_yml::from_str(&content)?;
             user_config.validate()?;
             config.merge(user_config);
         }
