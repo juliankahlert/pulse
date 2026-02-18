@@ -382,9 +382,9 @@ pub fn generate_prompt(config: &Config) -> Result<String> {
             let (root, nav) = if dir == "~" {
                 ("~", "".to_string())
             } else if dir.starts_with("~/") {
-                ("~", dir.strip_prefix("~/").unwrap().to_string())
+                ("~", dir.strip_prefix("~/").map(|s| s.to_string()).unwrap_or_default())
             } else {
-                ("/", dir.strip_prefix("/").unwrap().to_string())
+                ("/", dir.strip_prefix("/").map(|s| s.to_string()).unwrap_or_default())
             };
             let nav_parts: Vec<&str> = nav.split('/').filter(|s| !s.is_empty()).collect();
             let path_display = truncate_non_git_path(root, &nav_parts, mode == "Inline");
@@ -399,9 +399,9 @@ pub fn generate_prompt(config: &Config) -> Result<String> {
         let (root, nav) = if dir == "~" {
             ("~", "".to_string())
         } else if dir.starts_with("~/") {
-            ("~", dir.strip_prefix("~/").unwrap().to_string())
+            ("~", dir.strip_prefix("~/").map(|s| s.to_string()).unwrap_or_default())
         } else {
-            ("/", dir.strip_prefix("/").unwrap().to_string())
+            ("/", dir.strip_prefix("/").map(|s| s.to_string()).unwrap_or_default())
         };
         let nav_parts: Vec<&str> = nav.split('/').filter(|s| !s.is_empty()).collect();
         let path_display = truncate_non_git_path(root, &nav_parts, mode == "Inline");
