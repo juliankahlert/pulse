@@ -108,7 +108,7 @@ impl Config {
 
         // Load user config
         let user_path = dirs::home_dir()
-            .unwrap_or_default()
+            .ok_or_else(|| anyhow!("Cannot determine home directory"))?
             .join(".config")
             .join("pulse")
             .join("config.yaml");

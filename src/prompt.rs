@@ -7,7 +7,7 @@ use std::cell::OnceCell;
 use std::fmt;
 use std::path::PathBuf;
 
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 
 use crate::clrs::Clrs;
 use crate::config::Config;
@@ -395,7 +395,8 @@ pub fn get_prompt_user() -> Result<String> {
 /// Get the current working directory, with home directory abbreviated as ~
 pub fn get_current_directory() -> Result<String> {
     let cwd = std::env::current_dir()?;
-    let home = dirs::home_dir().unwrap_or_default();
+    let home = dirs::home_dir()
+        .ok_or_else(|| anyhow!("Cannot determine home directory"))?;
 
     let path_str = cwd.to_string_lossy();
 
