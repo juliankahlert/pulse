@@ -35,7 +35,7 @@ fn shell_is_zsh() -> bool {
         .unwrap_or(false)
 }
 
-fn append_to_file(path: &PathBuf, content: &str) -> Result<()> {
+pub fn append_to_file(path: &PathBuf, content: &str) -> Result<()> {
     let mut file = OpenOptions::new()
         .append(true)
         .create(true)
@@ -48,12 +48,12 @@ fn append_to_file(path: &PathBuf, content: &str) -> Result<()> {
     Ok(())
 }
 
-fn is_installed(path: &PathBuf) -> Result<bool> {
+pub fn is_installed(path: &PathBuf) -> Result<bool> {
     let content = std::fs::read_to_string(path)?;
     Ok(content.contains(r#"export PS1='$(pulse)'"#))
 }
 
-fn remove_existing_install(path: &PathBuf) -> Result<bool> {
+pub fn remove_existing_install(path: &PathBuf) -> Result<bool> {
     let content = std::fs::read_to_string(path)?;
     let lines: Vec<&str> = content.lines().collect();
     let mut filtered_lines = Vec::new();
@@ -116,4 +116,96 @@ pub fn install() -> Result<()> {
     );
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Read;
+    use tempfile::NamedTempFile;
+
+    #[test]
+    fn test_is_installed_when_file_contains_marker() {
+        let mut temp_file = NamedTempFile::new().expect("Failed to create temp file");
+        temp_file
+            .write_all(b"some content\nexport PS1='$(pulse)'\nmore content")
+            .expect("Failed to write to temp file");
+
+        let path = temp_file.path().to_path_buf();
+        let result = is_installed(&path).expect("is_installed should not error");
+
+        assert_eq!(result, true);
+    }
+
+    #[test]
+    fn test_is_installed_when_file_does_not_contain_marker() {
+        let mut temp_file = NamedTempFile::new().expect("Failed to create temp file");
+        temp_file
+            .write_all(b"some content\nother line\nmore content")
+            .expect("Failed to write to temp file");
+
+        let path = temp_file.path().to_path_buf();
+        let result = is_installed(&path).expect("is_installed should not error");
+
+        assert_eq!(result, false);
+    }
+
+    #[test]
+    fn test_is_installed_when_file_does_not_exist() {
+        let path = PathBuf::from("/nonexistent/path/to/file/that/does/not/exist");
+        let result = is_installed(&path);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_append_to_file() {
+        let temp_file = NamedTempFile::new().expect("Failed to create temp file");
+        let path = temp_file.path().to_path_buf();
+
+        append_to_file(&path, "first line").expect("append_to_file should not error");
+        append_to_file(&path, "second line").expect("append_to_file should not error");
+
+        let mut file = std::fs::File::open(&path).expect("Failed to open temp file");
+        let mut contents = String::new();
+        file.read_to_string(&mut contents)
+            .expect("Failed to read temp file");
+
+        assert_eq!(contents, "first line\nsecond line\n");
+    }
+
+    #[test]
+    fn test_remove_existing_install_removes_pulse_block() {
+        let mut temp_file = NamedTempFile::new().expect("Failed to create temp file");
+        let content = "some initial content\n# Pulse - PS1 prompt engine\nexport PS1='$(pulse)'\nexport PROMPT_COMMAND='export LAST_EXIT_CODE=$?'\n\nmore content";
+        temp_file
+            .write_all(content.as_bytes())
+            .expect("Failed to write to temp file");
+
+        let path = temp_file.path().to_path_buf();
+        let removed =
+            remove_existing_install(&path).expect("remove_existing_install should not error");
+
+        assert_eq!(removed, true);
+
+        let remaining = std::fs::read_to_string(&path).expect("Failed to read temp file");
+        assert_eq!(remaining, "some initial content\nmore content");
+    }
+
+    #[test]
+    fn test_remove_existing_install_when_no_pulse_block() {
+        let mut temp_file = NamedTempFile::new().expect("Failed to create temp file");
+        temp_file
+            .write_all(b"some content\nother line")
+            .expect("Failed to write to temp file");
+
+        let path = temp_file.path().to_path_buf();
+        let removed =
+            remove_existing_install(&path).expect("remove_existing_install should not error");
+
+        assert_eq!(removed, false);
+
+        let remaining = std::fs::read_to_string(&path).expect("Failed to read temp file");
+        assert_eq!(remaining, "some content\nother line");
+    }
 }

@@ -382,9 +382,19 @@ pub fn generate_prompt(config: &Config) -> Result<String> {
             let (root, nav) = if dir == "~" {
                 ("~", "".to_string())
             } else if dir.starts_with("~/") {
-                ("~", dir.strip_prefix("~/").map(|s| s.to_string()).unwrap_or_default())
+                (
+                    "~",
+                    dir.strip_prefix("~/")
+                        .map(|s| s.to_string())
+                        .unwrap_or_default(),
+                )
             } else {
-                ("/", dir.strip_prefix("/").map(|s| s.to_string()).unwrap_or_default())
+                (
+                    "/",
+                    dir.strip_prefix("/")
+                        .map(|s| s.to_string())
+                        .unwrap_or_default(),
+                )
             };
             let nav_parts: Vec<&str> = nav.split('/').filter(|s| !s.is_empty()).collect();
             let path_display = truncate_non_git_path(root, &nav_parts, mode == "Inline");
@@ -399,9 +409,19 @@ pub fn generate_prompt(config: &Config) -> Result<String> {
         let (root, nav) = if dir == "~" {
             ("~", "".to_string())
         } else if dir.starts_with("~/") {
-            ("~", dir.strip_prefix("~/").map(|s| s.to_string()).unwrap_or_default())
+            (
+                "~",
+                dir.strip_prefix("~/")
+                    .map(|s| s.to_string())
+                    .unwrap_or_default(),
+            )
         } else {
-            ("/", dir.strip_prefix("/").map(|s| s.to_string()).unwrap_or_default())
+            (
+                "/",
+                dir.strip_prefix("/")
+                    .map(|s| s.to_string())
+                    .unwrap_or_default(),
+            )
         };
         let nav_parts: Vec<&str> = nav.split('/').filter(|s| !s.is_empty()).collect();
         let path_display = truncate_non_git_path(root, &nav_parts, mode == "Inline");
@@ -548,7 +568,9 @@ mod tests {
     fn test_get_git_info() {
         let lazy_info = get_git_info();
         assert!(lazy_info.get().is_some());
-        let info = lazy_info.get().expect("lazy_info should be Some after is_some check");
+        let info = lazy_info
+            .get()
+            .expect("lazy_info should be Some after is_some check");
         assert_eq!(info.repo_name, "pulse");
         assert!(!info.branch.is_empty());
         assert!(info.work_dir.is_absolute());

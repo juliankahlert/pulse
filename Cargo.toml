@@ -5,6 +5,9 @@ edition = "2024"
 description = "Pulse – A fast, configurable Rust PS1 prompt engine for modern shells. "
 license = "MIT"
 
+[dev-dependencies]
+tempfile = "3"
+
 [dependencies]
 clap = { version = "4.4", features = ["derive", "cargo"] }
 clap_complete = "4.4"
