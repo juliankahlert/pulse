@@ -4,8 +4,9 @@
 //! Supports different modes and customizable colors.
 
 use std::fmt;
+use std::path::PathBuf;
 
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 
 use crate::clrs::Clrs;
 use crate::config::Config;
@@ -42,6 +43,47 @@ impl fmt::Display for GitDisplayMode {
             GitDisplayMode::Nano => write!(f, "Nano"),
         }
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct GitInfo {
+    pub repo_name: String,
+    pub branch: String,
+    pub user_email: Option<String>,
+    pub work_dir: PathBuf,
+}
+
+pub fn get_git_info() -> Option<GitInfo> {
+    let repo = gix::discover(".").ok()?;
+    let work_dir = repo.work_dir()?.to_path_buf();
+    let work_dir = std::fs::canonicalize(&work_dir).ok()?;
+    let repo_name = work_dir
+        .file_name()
+        .and_then(|n| n.to_str())
+        .map(|s| s.to_string())?;
+
+    let mut head = repo.head().ok()?;
+    let branch = if head.is_detached() {
+        head.try_peel_to_id_in_place()
+            .ok()
+            .flatten()
+            .map(|id| id.to_hex_with_len(7).to_string())
+            .unwrap_or_else(|| "unknown".to_string())
+    } else {
+        head.referent_name()
+            .map(|name| name.shorten().to_string())
+            .unwrap_or_else(|| "unknown".to_string())
+    };
+
+    let config = repo.config_snapshot();
+    let user_email = config.string("user.email").map(|s| s.to_string());
+
+    Some(GitInfo {
+        repo_name,
+        branch,
+        user_email,
+        work_dir,
+    })
 }
 
 pub fn select_display_mode(
@@ -237,7 +279,7 @@ pub fn generate_prompt(config: &Config) -> Result<String> {
     let user = get_prompt_user()?;
     let host = get_hostname()?;
     let dir = get_current_directory()?;
-    let git_repo = get_git_repo_name();
+    let git_info = get_git_info();
     let exit_code = get_exit_code();
 
     let user_color = config.get_color("username").to_dyn();
@@ -257,25 +299,30 @@ pub fn generate_prompt(config: &Config) -> Result<String> {
     let terminal_width = get_terminal_width().unwrap_or(120);
 
     let mut first_line = String::new();
-    if let Some(repo_name) = git_repo {
-        let repo_root = std::fs::canonicalize(
-            gix::discover(".")?
-                .work_dir()
-                .ok_or(anyhow!("no work dir"))?,
-        )?;
+    if let Some(info) = git_info {
         let current = std::env::current_dir()?;
-        let relative = current.strip_prefix(&repo_root).unwrap_or(&current);
+        let relative = current.strip_prefix(&info.work_dir).unwrap_or(&current);
         let relative_str = relative.to_string_lossy();
         let parts: Vec<&str> = relative_str.split('/').filter(|s| !s.is_empty()).collect();
-        let branch = get_git_branch().unwrap_or_else(|| "unknown".to_string());
-        let git_email = get_git_user_email();
-        let email = git_email.as_deref();
+        let email = info.user_email.as_deref();
 
-        let display_mode =
-            select_display_mode(terminal_width, email, &repo_name, &branch, &parts, &colors);
+        let display_mode = select_display_mode(
+            terminal_width,
+            email,
+            &info.repo_name,
+            &info.branch,
+            &parts,
+            &colors,
+        );
 
-        first_line =
-            format_git_prompt_line(display_mode, email, &repo_name, &branch, &parts, &colors);
+        first_line = format_git_prompt_line(
+            display_mode,
+            email,
+            &info.repo_name,
+            &info.branch,
+            &parts,
+            &colors,
+        );
     } else {
         // Non-git mode
         let (root, nav) = if dir == "~" {
@@ -311,6 +358,7 @@ pub fn get_hostname() -> Result<String> {
 }
 
 /// Get the current Git branch if in a repository
+#[allow(dead_code)]
 pub fn get_git_branch() -> Option<String> {
     let repo = gix::discover(".").ok()?;
     let mut head = repo.head().ok()?;
@@ -337,6 +385,7 @@ pub fn is_root_user() -> bool {
 }
 
 /// Get the git repository name if in a repository
+#[allow(dead_code)]
 pub fn get_git_repo_name() -> Option<String> {
     let repo = gix::discover(".").ok()?;
     let workdir = repo.work_dir()?;
@@ -416,6 +465,17 @@ mod tests {
         let name = repo_name.unwrap();
         assert_eq!(name, "pulse");
         assert!(!name.is_empty());
+    }
+
+    #[test]
+    fn test_get_git_info() {
+        let info = get_git_info();
+        // Since this is run in a git repo, should be Some
+        assert!(info.is_some());
+        let info = info.unwrap();
+        assert_eq!(info.repo_name, "pulse");
+        assert!(!info.branch.is_empty());
+        assert!(info.work_dir.is_absolute());
     }
 
     #[test]
