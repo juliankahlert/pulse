@@ -580,7 +580,7 @@ pub fn build_non_git_path_string(
     user: &str,
     host: &str,
     colors: &PromptColors,
-    mode: &str,
+    _mode: &str,
 ) -> String {
     let (root, nav) = if dir == "~" {
         ("~", "".to_string())
