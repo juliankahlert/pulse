@@ -735,6 +735,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_get_exit_code_default() {
         // Ensure no env vars are set
         unsafe {
@@ -745,6 +746,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_get_exit_code_pipestatus() {
         unsafe {
             std::env::remove_var("PIPESTATUS");
