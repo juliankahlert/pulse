@@ -1186,4 +1186,132 @@ mod tests {
         let clean = strip_ansi(&result);
         assert_eq!(clean, "@domain: [repo] … › dir3");
     }
+
+    fn make_test_colors() -> PromptColors {
+        use crate::clrs::Clrs;
+        PromptColors {
+            user_color: Clrs::Aqua.to_dyn(),
+            host_color: Clrs::Yellow.to_dyn(),
+            git_color: Clrs::Green.to_dyn(),
+            white: Clrs::White.to_dyn(),
+            dir_color: Clrs::Blue.to_dyn(),
+        }
+    }
+
+    #[test]
+    fn test_select_display_mode_nano() {
+        let result = select_display_mode(
+            10,
+            Some("user@example.com"),
+            "myrepo",
+            "main",
+            &["src", "lib"],
+            &make_test_colors(),
+        );
+        assert_eq!(result, GitDisplayMode::Nano);
+    }
+
+    #[test]
+    fn test_select_display_mode_micro() {
+        let result = select_display_mode(
+            33,
+            Some("user@example.com"),
+            "myrepo",
+            "main",
+            &["src"],
+            &make_test_colors(),
+        );
+        assert_eq!(result, GitDisplayMode::Micro);
+    }
+
+    #[test]
+    fn test_select_display_mode_mini() {
+        let result = select_display_mode(
+            36,
+            Some("user@example.com"),
+            "myrepo",
+            "main",
+            &["src"],
+            &make_test_colors(),
+        );
+        assert_eq!(result, GitDisplayMode::Mini);
+    }
+
+    #[test]
+    fn test_select_display_mode_full() {
+        let result = select_display_mode(
+            200,
+            Some("user@example.com"),
+            "myrepo",
+            "main",
+            &["src", "main", "rust"],
+            &make_test_colors(),
+        );
+        assert_eq!(result, GitDisplayMode::Full);
+    }
+
+    #[test]
+    fn test_select_display_mode_auto_wide_terminal() {
+        let result = select_display_mode(
+            200,
+            Some("user@example.com"),
+            "myrepo",
+            "main",
+            &["src", "main"],
+            &make_test_colors(),
+        );
+        assert_eq!(result, GitDisplayMode::Full);
+    }
+
+    #[test]
+    fn test_select_display_mode_auto_medium_terminal() {
+        let result = select_display_mode(
+            36,
+            Some("user@example.com"),
+            "myrepo",
+            "main",
+            &["src"],
+            &make_test_colors(),
+        );
+        assert_eq!(result, GitDisplayMode::Mini);
+    }
+
+    #[test]
+    fn test_select_display_mode_auto_narrow_terminal() {
+        let result = select_display_mode(
+            25,
+            Some("user@example.com"),
+            "myrepo",
+            "main",
+            &["src"],
+            &make_test_colors(),
+        );
+        assert_eq!(result, GitDisplayMode::Nano);
+    }
+
+    #[test]
+    fn test_select_display_mode_auto_zero_width() {
+        let result = select_display_mode(
+            0,
+            Some("user@example.com"),
+            "myrepo",
+            "main",
+            &["src"],
+            &make_test_colors(),
+        );
+        assert_eq!(result, GitDisplayMode::Nano);
+    }
+
+    #[test]
+    fn test_select_display_mode_auto_very_small_width() {
+        let result = select_display_mode(
+            5,
+            Some("user@example.com"),
+            "myrepo",
+            "main",
+            &["src"],
+            &make_test_colors(),
+        );
+        assert_eq!(result, GitDisplayMode::Nano);
+    }
 }
