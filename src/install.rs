@@ -85,6 +85,33 @@ pub fn remove_existing_install(path: &PathBuf) -> Result<bool> {
     Ok(removed)
 }
 
+/// Install Pulse to the shell's RC file.
+///
+/// This function adds Pulse initialization code to the user's shell
+/// configuration file (.bashrc or .zshrc based on the current shell).
+///
+/// # Preconditions
+/// - The `SHELL` environment variable must be set and contain either "bash" or "zsh".
+/// - The home directory must be accessible via the `dirs` crate.
+///
+/// # Postconditions
+/// - If not already installed, adds the Pulse initialization lines to the RC file.
+/// - If already installed, removes the old installation before adding the new one.
+/// - Prints status messages to stdout indicating the installation result.
+///
+/// # Error Cases
+/// Returns an error if:
+/// - `SHELL` environment variable is not set (via `get_shell_rc()`).
+/// - The home directory cannot be determined (via `get_shell_rc()`).
+/// - The RC file cannot be read (via `is_installed()` or `remove_existing_install()`).
+/// - The RC file cannot be written to (via `append_to_file()`).
+///
+/// # Example
+/// ```ignore
+/// if let Err(e) = install() {
+///     eprintln!("Installation failed: {}", e);
+/// }
+/// ```
 pub fn install() -> Result<()> {
     let rc_path = get_shell_rc()?;
 

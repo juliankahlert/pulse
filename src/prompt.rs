@@ -337,14 +337,54 @@ pub fn format_git_prompt_line(
     result
 }
 
-/// Get the current username.
+/// Get the current username from the operating system.
+///
+/// Returns the username of the currently logged-in user by querying
+/// the system via the `users` crate.
+///
+/// # Returns
+/// - `Ok(String)` containing the username on success.
+/// - `Err` if the username cannot be retrieved from the system.
+///
+/// # Use Cases
+/// Use this function when you need the raw system username for:
+/// - System administration tasks
+/// - File ownership checks
+/// - Any context where you need the actual OS username
+///
+/// # Example
+/// ```ignore
+/// let username = get_username()?;
+/// println!("Current user: {}", username);
+/// ```
 pub fn get_username() -> Result<String> {
     users::get_current_username()
         .map(|s| s.to_string_lossy().to_string())
         .ok_or_else(|| anyhow::anyhow!("Unable to get username"))
 }
 
-/// Get the user info for prompt: system username
+/// Get the user information for display in the prompt.
+///
+/// This function wraps [`get_username()`] and is specifically designed
+/// for use in shell prompt generation. It returns the same value as
+/// `get_username()` - the system username of the current user.
+///
+/// # Returns
+/// - `Ok(String)` containing the username suitable for prompt display.
+/// - `Err` if the username cannot be retrieved.
+///
+/// # When to Use
+/// Use `get_prompt_user()` when generating shell prompts, as it clearly
+/// communicates the purpose (prompt display) and guarantees the same
+/// username that would be shown in a traditional shell prompt.
+///
+/// Use [`get_username()`] for non-prompt contexts where you need the
+/// system username.
+///
+/// # Note
+/// Currently, this function is an alias for [`get_username()`], but this
+/// may change in future versions (e.g., to support custom prompt usernames
+/// or different display formats).
 pub fn get_prompt_user() -> Result<String> {
     get_username()
 }

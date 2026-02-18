@@ -19,6 +19,7 @@
 //! | Red     | #FF4136 | (255, 65, 54)  | Red     |
 //! | Maroon  | #85144b | (133, 20, 75)  | Red     |
 //! | Fuchsia | #F012BE | (240, 18, 190) | Magenta |
+//! | Magenta | #FF00FF | (255, 0, 255)  | Magenta |
 //! | Purple  | #B10DC9 | (177, 13, 201) | Magenta |
 //! | Black   | #111111 | (17, 17, 17)   | Black   |
 //! | Gray    | #AAAAAA | (170, 170, 170)| White   |

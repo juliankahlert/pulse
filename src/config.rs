@@ -63,8 +63,37 @@ impl Default for Config {
 impl Config {
     /// Load configuration from default locations.
     ///
-    /// Loads global config from /etc/pulse/config.yaml, then user config
-    /// from ~/.config/pulse/config.yaml, merging them with defaults.
+    /// Loads config from the following sources in order of precedence (later sources override earlier):
+    /// 1. Default configuration (lowest priority)
+    /// 2. Global config at `/etc/pulse/config.yaml`
+    /// 3. User config at `~/.config/pulse/config.yaml` (highest priority)
+    ///
+    /// When both the global and user configs define the same segment (by name),
+    /// the user config takes precedence - the segment from the user config replaces
+    /// the corresponding segment from the global config. Duplicate segments within
+    /// a single config file are not supported; only the last occurrence would be kept
+    /// when parsed, though this depends on the YAML parser behavior.
+    ///
+    /// # Preconditions
+    /// - The configuration files, if they exist, must be valid YAML.
+    /// - Segment names must be one of: "username", "hostname", "current_directory", "git_branch".
+    /// - Colors must be valid color names parseable by [`std::str::FromStr`].
+    ///
+    /// # Postconditions
+    /// - Returns a valid `Config` with all segments merged from the applicable sources.
+    /// - The returned config has its color cache built for O(1) color lookups.
+    ///
+    /// # Error Cases
+    /// Returns an error if:
+    /// - A config file exists but cannot be read.
+    /// - A config file contains invalid YAML.
+    /// - A config file contains invalid segment names or colors.
+    ///
+    /// # Example
+    /// ```ignore
+    /// let config = Config::load().expect("Failed to load config");
+    /// let username_color = config.get_color("username");
+    /// ```
     pub fn load() -> Result<Self> {
         let mut config = Self::default();
 
