@@ -25,6 +25,7 @@ log = "0.4"
 env_logger = "0.10"
 supports-color = "3"
 crossterm = "0.28"
+unicode-width = "0.2"
 
 [profile.release]
 lto = true

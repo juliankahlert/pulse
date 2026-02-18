@@ -151,7 +151,7 @@ pub fn select_display_mode(
     repo_name: &str,
     branch: &str,
     nav_parts: &[&str],
-    colors: &PromptColors,
+    _colors: &PromptColors,
 ) -> GitDisplayMode {
     let modes = [
         GitDisplayMode::Full,
@@ -161,9 +161,8 @@ pub fn select_display_mode(
     ];
 
     for mode in modes {
-        let rendered = format_git_prompt_line(mode, email, repo_name, branch, nav_parts, colors);
-        let visual_width = strip_ansi(&rendered).len();
-        if visual_width <= terminal_width as usize {
+        let width = calculate_git_prompt_width(mode, email, repo_name, branch, nav_parts);
+        if width <= terminal_width as usize {
             return mode;
         }
     }
@@ -171,25 +170,75 @@ pub fn select_display_mode(
     GitDisplayMode::Nano
 }
 
-fn strip_ansi(s: &str) -> String {
-    let mut result = String::new();
-    let mut chars = s.chars().peekable();
+fn visual_width(s: &str) -> usize {
+    unicode_width::UnicodeWidthStr::width(s)
+}
 
-    while let Some(c) = chars.next() {
-        if c == '\x1b' && chars.peek() == Some(&'[') {
-            chars.next();
-            while let Some(&next) = chars.peek() {
-                if next.is_ascii_alphabetic() {
-                    chars.next();
-                    break;
-                }
-                chars.next();
-            }
-            continue;
+fn calculate_git_prompt_width(
+    mode: GitDisplayMode,
+    email: Option<&str>,
+    repo_name: &str,
+    branch: &str,
+    nav_parts: &[&str],
+) -> usize {
+    let email_width = email.map_or(0, |e| {
+        if let Some((user, host)) = e.split_once('@') {
+            visual_width(user) + 1 + visual_width(host)
+        } else {
+            visual_width(e)
         }
-        result.push(c);
+    });
+
+    let repo_len = visual_width(repo_name);
+    let branch_len = visual_width(branch);
+
+    let nav_width = match mode {
+        GitDisplayMode::Full | GitDisplayMode::Mini | GitDisplayMode::Micro => {
+            let truncated = truncate_git_path(nav_parts);
+            visual_width(&truncated)
+        }
+        GitDisplayMode::Nano => {
+            if nav_parts.is_empty() {
+                0
+            } else if nav_parts.len() == 1 {
+                visual_width(nav_parts[0])
+            } else {
+                3 + visual_width("› ") + visual_width(nav_parts.last().unwrap_or(&""))
+            }
+        }
+    };
+
+    match mode {
+        GitDisplayMode::Full => email_width + 3 + repo_len + 3 + branch_len + 2 + nav_width,
+        GitDisplayMode::Mini => email_width + 3 + repo_len + 3 + 1 + 2 + nav_width,
+        GitDisplayMode::Micro => {
+            let host_len = email.map_or(0, |e| {
+                if let Some((_, host)) = e.split_once('@') {
+                    visual_width(host)
+                } else {
+                    visual_width(e)
+                }
+            });
+            1 + host_len + 3 + repo_len + 3 + 1 + 2 + nav_width
+        }
+        GitDisplayMode::Nano => {
+            let host_len = email.map_or(0, |e| {
+                if let Some((_, host)) = e.split_once('@') {
+                    visual_width(host)
+                } else {
+                    visual_width(e)
+                }
+            });
+            let last_dir_width = if nav_parts.is_empty() {
+                0
+            } else if nav_parts.len() == 1 {
+                visual_width(nav_parts[0])
+            } else {
+                3 + visual_width("› ") + visual_width(nav_parts.last().unwrap_or(&""))
+            };
+            1 + host_len + 3 + repo_len + 2 + last_dir_width
+        }
     }
-    result
 }
 
 pub fn format_git_prompt_line(
@@ -379,10 +428,14 @@ pub fn generate_prompt(config: &Config) -> Result<String> {
                 &colors,
             );
         } else {
-            first_line.push_str(&build_non_git_path_string(&dir, &user, &host, &colors, mode));
+            first_line.push_str(&build_non_git_path_string(
+                &dir, &user, &host, &colors, mode,
+            ));
         }
     } else {
-        first_line.push_str(&build_non_git_path_string(&dir, &user, &host, &colors, mode));
+        first_line.push_str(&build_non_git_path_string(
+            &dir, &user, &host, &colors, mode,
+        ));
     }
 
     let prompt_symbol = if is_root_user() { "#" } else { "$" };
