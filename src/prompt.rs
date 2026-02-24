@@ -633,8 +633,8 @@ mod tests {
     #[serial]
     fn test_is_in_git_repo() {
         let temp_dir = init_temp_git_repo();
-        let _guard = DirGuard::new(temp_dir.path());
-        assert!(discover_git_repo().is_some());
+        let repo = discover_git_repo_in(temp_dir.path());
+        assert!(repo.is_some());
     }
 
     #[test]
@@ -667,8 +667,8 @@ mod tests {
     #[serial]
     fn test_get_git_branch() {
         let temp_dir = init_temp_git_repo();
-        let _guard = DirGuard::new(temp_dir.path());
-        let branch = get_git_branch();
+        let repo = discover_git_repo_in(temp_dir.path()).expect("repo");
+        let branch = get_git_branch_from_repo(&repo);
         assert!(branch.is_some());
         let branch_name = branch.expect("branch should be Some after is_some check");
         assert!(!branch_name.is_empty());
@@ -678,26 +678,20 @@ mod tests {
     #[serial]
     fn test_get_git_repo_name() {
         let temp_dir = init_temp_git_repo();
-        let _guard = DirGuard::new(temp_dir.path());
+        let repo = discover_git_repo_in(temp_dir.path()).expect("repo");
         let expected = repo_name_from_path(temp_dir.path());
-        let repo_name = get_git_repo_name();
-        assert!(repo_name.is_some());
-        let name = repo_name.expect("repo_name should be Some after is_some check");
-        assert_eq!(name, expected);
-        assert!(!name.is_empty());
+        let repo_name = get_git_repo_name_from_repo(&repo).expect("repo name");
+        assert_eq!(repo_name, expected);
+        assert!(!repo_name.is_empty());
     }
 
     #[test]
     #[serial]
     fn test_get_git_info() {
         let temp_dir = init_temp_git_repo();
-        let _guard = DirGuard::new(temp_dir.path());
+        let repo = discover_git_repo_in(temp_dir.path()).expect("repo");
         let expected = repo_name_from_path(temp_dir.path());
-        let lazy_info = get_git_info();
-        assert!(lazy_info.get().is_some());
-        let info = lazy_info
-            .get()
-            .expect("lazy_info should be Some after is_some check");
+        let info = build_git_info(&repo).expect("build git info");
         assert_eq!(info.repo_name, expected);
         assert!(!info.branch.is_empty());
         assert!(info.work_dir.is_absolute());
