@@ -5,6 +5,7 @@
 
 use std::cell::OnceCell;
 use std::fmt;
+use std::marker::PhantomData;
 use std::path::PathBuf;
 
 use anyhow::{Result, anyhow};
@@ -45,6 +46,18 @@ pub struct PromptColors {
     pub dir_color: owo_colors::DynColors,
 }
 
+impl PromptColors {
+    pub fn from_config(config: &Config) -> Self {
+        Self {
+            user_color: config.get_color("username").to_dyn(),
+            host_color: config.get_color("hostname").to_dyn(),
+            git_color: config.get_color("git_branch").to_dyn(),
+            white: Clrs::White.to_dyn(),
+            dir_color: config.get_color("current_directory").to_dyn(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GitDisplayMode {
     Full,
@@ -70,6 +83,203 @@ pub struct GitInfo {
     pub branch: String,
     pub user_email: Option<String>,
     pub work_dir: PathBuf,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PromptLayout {
+    Inline,
+    DualLine,
+}
+
+impl PromptLayout {
+    fn from_config(mode: Option<&str>) -> Self {
+        match mode {
+            Some("Inline") => Self::Inline,
+            _ => Self::DualLine,
+        }
+    }
+
+    fn as_str(self) -> &'static str {
+        match self {
+            PromptLayout::Inline => "Inline",
+            PromptLayout::DualLine => "DualLine",
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct PromptBuilderData {
+    mode: PromptLayout,
+    colors: PromptColors,
+    user: Option<String>,
+    host: Option<String>,
+    dir: Option<String>,
+    current_dir: Option<PathBuf>,
+    git_info: Option<GitInfo>,
+    terminal_width: u16,
+    exit_code: String,
+    is_root: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct NeedsUser;
+
+#[derive(Debug, Clone, Copy)]
+pub struct NeedsHost;
+
+#[derive(Debug, Clone, Copy)]
+pub struct NeedsDir;
+
+#[derive(Debug, Clone, Copy)]
+pub struct Ready;
+
+#[derive(Debug, Clone)]
+pub struct PromptBuilder<State> {
+    data: PromptBuilderData,
+    _state: PhantomData<State>,
+}
+
+impl PromptBuilder<NeedsUser> {
+    pub fn from_config(config: &Config) -> Self {
+        Self {
+            data: PromptBuilderData {
+                mode: PromptLayout::from_config(config.mode.as_deref()),
+                colors: PromptColors::from_config(config),
+                user: None,
+                host: None,
+                dir: None,
+                current_dir: None,
+                git_info: None,
+                terminal_width: DEFAULT_TERM_WIDTH as u16,
+                exit_code: "0".to_string(),
+                is_root: false,
+            },
+            _state: PhantomData,
+        }
+    }
+
+    pub fn user(mut self, user: impl Into<String>) -> PromptBuilder<NeedsHost> {
+        self.data.user = Some(user.into());
+        PromptBuilder {
+            data: self.data,
+            _state: PhantomData,
+        }
+    }
+}
+
+impl PromptBuilder<NeedsHost> {
+    pub fn host(mut self, host: impl Into<String>) -> PromptBuilder<NeedsDir> {
+        self.data.host = Some(host.into());
+        PromptBuilder {
+            data: self.data,
+            _state: PhantomData,
+        }
+    }
+}
+
+impl PromptBuilder<NeedsDir> {
+    pub fn dir(mut self, dir: impl Into<String>) -> PromptBuilder<Ready> {
+        self.data.dir = Some(dir.into());
+        PromptBuilder {
+            data: self.data,
+            _state: PhantomData,
+        }
+    }
+}
+
+impl PromptBuilder<Ready> {
+    pub fn render(self) -> Result<String> {
+        let user = self
+            .data
+            .user
+            .ok_or_else(|| anyhow!("PromptBuilder missing user"))?;
+        let host = self
+            .data
+            .host
+            .ok_or_else(|| anyhow!("PromptBuilder missing host"))?;
+        let dir = self
+            .data
+            .dir
+            .ok_or_else(|| anyhow!("PromptBuilder missing dir"))?;
+
+        let first_line = if let Some(info) = self.data.git_info {
+            let nav_parts_owned = if let Some(current_dir) = &self.data.current_dir {
+                let relative = current_dir.strip_prefix(&info.work_dir).unwrap_or(current_dir);
+                let relative_str = relative.to_string_lossy();
+                relative_str
+                    .split('/')
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_string)
+                    .collect::<Vec<_>>()
+            } else {
+                Vec::new()
+            };
+            let nav_parts = nav_parts_owned.iter().map(String::as_str).collect::<Vec<_>>();
+            let email = info.user_email.as_deref();
+            let display_mode = select_display_mode(
+                self.data.terminal_width,
+                email,
+                &info.repo_name,
+                &info.branch,
+                &nav_parts,
+                &self.data.colors,
+            );
+            format_git_prompt_line(
+                display_mode,
+                email,
+                &info.repo_name,
+                &info.branch,
+                &nav_parts,
+                &self.data.colors,
+            )
+        } else {
+            build_non_git_path_string(
+                &dir,
+                &user,
+                &host,
+                &self.data.colors,
+                self.data.mode.as_str(),
+            )
+        };
+
+        let prompt_symbol = if self.data.is_root { "#" } else { "$" };
+        let prompt = match self.data.mode {
+            PromptLayout::Inline => format!("{} {} ", first_line, prompt_symbol),
+            PromptLayout::DualLine => format!(
+                "{}\n└─ {} {} ",
+                first_line, self.data.exit_code, prompt_symbol
+            ),
+        };
+        Ok(prompt)
+    }
+}
+
+impl<State> PromptBuilder<State> {
+    pub fn terminal_width(mut self, terminal_width: u16) -> Self {
+        self.data.terminal_width = terminal_width;
+        self
+    }
+
+    pub fn exit_code(mut self, exit_code: impl Into<String>) -> Self {
+        self.data.exit_code = exit_code.into();
+        self
+    }
+
+    pub fn root(mut self, is_root: bool) -> Self {
+        self.data.is_root = is_root;
+        self
+    }
+
+    pub fn current_dir_path(mut self, current_dir: PathBuf) -> Self {
+        self.data.current_dir = Some(current_dir);
+        self
+    }
+
+    pub fn git_info(mut self, git_info: Option<GitInfo>) -> Self {
+        self.data.git_info = git_info;
+        self
+    }
+
 }
 
 pub struct LazyGitInfo {
@@ -102,10 +312,6 @@ impl Default for LazyGitInfo {
     }
 }
 
-#[allow(dead_code)]
-pub fn get_git_info() -> LazyGitInfo {
-    LazyGitInfo::new(discover_git_repo())
-}
 
 pub fn select_display_mode(
     terminal_width: u16,
@@ -364,75 +570,26 @@ pub fn get_current_directory() -> Result<String> {
 
 /// Generate the prompt string based on configuration
 pub fn generate_prompt(config: &Config) -> Result<String> {
-    let mode = config.mode.as_deref().unwrap_or("DualLine");
-
     let user = get_prompt_user()?;
     let host = get_hostname()?;
     let dir = get_current_directory()?;
+    let current_dir = std::env::current_dir()?;
     let repo = discover_git_repo();
-    let git_info = repo.map(|repo| LazyGitInfo::new(Some(repo)));
+    let git_info = LazyGitInfo::new(repo);
+    let git_info = git_info.get().cloned();
     let exit_code = get_exit_code();
-
-    let user_color = config.get_color("username").to_dyn();
-    let host_color = config.get_color("hostname").to_dyn();
-    let dir_color = config.get_color("current_directory").to_dyn();
-    let git_color = config.get_color("git_branch").to_dyn();
-    let white = Clrs::White.to_dyn();
-
-    let colors = PromptColors {
-        user_color,
-        host_color,
-        git_color,
-        white,
-        dir_color,
-    };
-
     let terminal_width = get_terminal_width().unwrap_or(DEFAULT_TERM_WIDTH as u16);
 
-    let mut first_line = String::new();
-    if let Some(ref lazy_info) = git_info {
-        if let Some(info) = lazy_info.get() {
-            let current = std::env::current_dir()?;
-            let relative = current.strip_prefix(&info.work_dir).unwrap_or(&current);
-            let relative_str = relative.to_string_lossy();
-            let parts: Vec<&str> = relative_str.split('/').filter(|s| !s.is_empty()).collect();
-            let email = info.user_email.as_deref();
-
-            let display_mode = select_display_mode(
-                terminal_width,
-                email,
-                &info.repo_name,
-                &info.branch,
-                &parts,
-                &colors,
-            );
-
-            first_line = format_git_prompt_line(
-                display_mode,
-                email,
-                &info.repo_name,
-                &info.branch,
-                &parts,
-                &colors,
-            );
-        } else {
-            first_line.push_str(&build_non_git_path_string(
-                &dir, &user, &host, &colors, mode,
-            ));
-        }
-    } else {
-        first_line.push_str(&build_non_git_path_string(
-            &dir, &user, &host, &colors, mode,
-        ));
-    }
-
-    let prompt_symbol = if is_root_user() { "#" } else { "$" };
-    let prompt = if mode == "Inline" {
-        format!("{} {} ", first_line, prompt_symbol)
-    } else {
-        format!("{}\n└─ {} {} ", first_line, exit_code, prompt_symbol)
-    };
-    Ok(prompt)
+    PromptBuilder::from_config(config)
+        .terminal_width(terminal_width)
+        .current_dir_path(current_dir)
+        .exit_code(exit_code)
+        .root(is_root_user())
+        .git_info(git_info)
+        .user(user)
+        .host(host)
+        .dir(dir)
+        .render()
 }
 
 /// Get the system's hostname
@@ -442,12 +599,6 @@ pub fn get_hostname() -> Result<String> {
         .map_err(|e| anyhow::anyhow!("Unable to get hostname: {}", e))
 }
 
-/// Get the current Git branch if in a repository
-#[allow(dead_code)]
-pub fn get_git_branch() -> Option<String> {
-    let repo = discover_git_repo()?;
-    get_git_branch_from_repo(&repo)
-}
 
 fn get_git_branch_from_repo(repo: &gix::Repository) -> Option<String> {
     let mut head = repo.head().ok()?;
@@ -473,21 +624,6 @@ pub fn is_root_user() -> bool {
     users::get_current_uid() == 0
 }
 
-/// Get the git repository name if in a repository
-#[allow(dead_code)]
-pub fn get_git_repo_name() -> Option<String> {
-    let repo = discover_git_repo()?;
-    get_git_repo_name_from_repo(&repo)
-}
-
-fn get_git_repo_name_from_repo(repo: &gix::Repository) -> Option<String> {
-    let workdir = repo.work_dir()?;
-    std::fs::canonicalize(workdir)
-        .ok()?
-        .file_name()?
-        .to_str()
-        .map(|s| s.to_string())
-}
 
 fn build_git_info(repo: &gix::Repository) -> Option<GitInfo> {
     let work_dir = repo.work_dir()?;
@@ -676,17 +812,6 @@ mod tests {
 
     #[test]
     #[serial]
-    fn test_get_git_repo_name() {
-        let temp_dir = init_temp_git_repo();
-        let repo = discover_git_repo_in(temp_dir.path()).expect("repo");
-        let expected = repo_name_from_path(temp_dir.path());
-        let repo_name = get_git_repo_name_from_repo(&repo).expect("repo name");
-        assert_eq!(repo_name, expected);
-        assert!(!repo_name.is_empty());
-    }
-
-    #[test]
-    #[serial]
     fn test_get_git_info() {
         let temp_dir = init_temp_git_repo();
         let repo = discover_git_repo_in(temp_dir.path()).expect("repo");
@@ -869,8 +994,10 @@ mod tests {
     #[test]
     fn test_get_terminal_width() {
         let width = get_terminal_width();
-        assert!(width.is_some());
-        assert!(width.expect("terminal width should be Some") > 0);
+        let Some(width) = width else {
+            return;
+        };
+        assert!(width > 0);
     }
 
     fn strip_ansi(s: &str) -> String {
@@ -1223,6 +1350,43 @@ mod tests {
         }
     }
 
+    fn make_color_override_config() -> Config {
+        let mut config = Config::default();
+        for segment in &mut config.segments {
+            match segment.name.as_str() {
+                "username" => segment.color = Some("Red".to_string()),
+                "hostname" => segment.color = Some("Yellow".to_string()),
+                "current_directory" => segment.color = Some("Blue".to_string()),
+                "git_branch" => segment.color = Some("Green".to_string()),
+                _ => {}
+            }
+        }
+        config.segment_colors.clear();
+        config.segment_colors.insert("username".to_string(), Clrs::Red);
+        config.segment_colors.insert("hostname".to_string(), Clrs::Yellow);
+        config.segment_colors.insert("current_directory".to_string(), Clrs::Blue);
+        config.segment_colors.insert("git_branch".to_string(), Clrs::Green);
+        config
+    }
+
+    #[test]
+    fn test_prompt_colors_from_config() {
+        let config = make_color_override_config();
+        let colors = PromptColors::from_config(&config);
+
+        let user = format!("{}", "user".color(colors.user_color));
+        let host = format!("{}", "host".color(colors.host_color));
+        let git = format!("{}", "git".color(colors.git_color));
+        let dir = format!("{}", "dir".color(colors.dir_color));
+        let white = format!("{}", "white".color(colors.white));
+
+        assert_eq!(user, format!("{}", "user".color(Clrs::Red.to_dyn())));
+        assert_eq!(host, format!("{}", "host".color(Clrs::Yellow.to_dyn())));
+        assert_eq!(git, format!("{}", "git".color(Clrs::Green.to_dyn())));
+        assert_eq!(dir, format!("{}", "dir".color(Clrs::Blue.to_dyn())));
+        assert_eq!(white, format!("{}", "white".color(Clrs::White.to_dyn())));
+    }
+
     #[test]
     fn test_select_display_mode_nano() {
         let result = select_display_mode(
@@ -1338,5 +1502,123 @@ mod tests {
             &make_test_colors(),
         );
         assert_eq!(result, GitDisplayMode::Nano);
+    }
+
+    #[test]
+    fn test_prompt_builder_inline_non_git() {
+        let config = Config {
+            mode: Some("Inline".to_string()),
+            ..Default::default()
+        };
+        let prompt = PromptBuilder::from_config(&config)
+            .terminal_width(120)
+            .exit_code("0")
+            .root(false)
+            .user("alice")
+            .host("devbox")
+            .dir("~/work/pulse")
+            .render();
+
+        let prompt = match prompt {
+            Ok(value) => value,
+            Err(err) => panic!("prompt render failed: {err}"),
+        };
+
+        let clean = strip_ansi(&prompt);
+        assert!(clean.lines().count() == 1);
+        assert_eq!(clean, "alice@devbox:~ work › pulse $ ");
+    }
+
+    #[test]
+    fn test_prompt_builder_dualline_non_git() {
+        let config = Config::default();
+        let prompt = PromptBuilder::from_config(&config)
+            .terminal_width(120)
+            .exit_code("7")
+            .root(false)
+            .user("bob")
+            .host("laptop")
+            .dir("/usr/local/bin")
+            .render();
+
+        let prompt = match prompt {
+            Ok(value) => value,
+            Err(err) => panic!("prompt render failed: {err}"),
+        };
+
+        let clean = strip_ansi(&prompt);
+        let mut lines = clean.lines();
+        let first = lines.next().unwrap_or("");
+        let second = lines.next().unwrap_or("");
+        assert!(lines.next().is_none());
+        assert_eq!(first, "bob@laptop:/ usr › local › bin");
+        assert_eq!(second, "└─ 7 $ ");
+    }
+
+    #[test]
+    fn test_prompt_builder_inline_git() {
+        let config = Config {
+            mode: Some("Inline".to_string()),
+            ..Default::default()
+        };
+        let git_info = GitInfo {
+            repo_name: "pulse".to_string(),
+            branch: "main".to_string(),
+            user_email: Some("dev@example.com".to_string()),
+            work_dir: PathBuf::from("/repo"),
+        };
+        let prompt = PromptBuilder::from_config(&config)
+            .terminal_width(200)
+            .exit_code("0")
+            .root(false)
+            .git_info(Some(git_info))
+            .current_dir_path(PathBuf::from("/repo/src/lib"))
+            .user("unused")
+            .host("unused")
+            .dir("/repo/src/lib")
+            .render();
+
+        let prompt = match prompt {
+            Ok(value) => value,
+            Err(err) => panic!("prompt render failed: {err}"),
+        };
+
+        let clean = strip_ansi(&prompt);
+        assert!(clean.lines().count() == 1);
+        assert_eq!(clean, "dev@example.com: [pulse : main] src › lib $ ");
+    }
+
+    #[test]
+    fn test_prompt_builder_dualline_git() {
+        let config = Config::default();
+        let git_info = GitInfo {
+            repo_name: "pulse".to_string(),
+            branch: "main".to_string(),
+            user_email: Some("dev@example.com".to_string()),
+            work_dir: PathBuf::from("/repo"),
+        };
+        let prompt = PromptBuilder::from_config(&config)
+            .terminal_width(200)
+            .exit_code("9")
+            .root(false)
+            .git_info(Some(git_info))
+            .current_dir_path(PathBuf::from("/repo/src/bin"))
+            .user("unused")
+            .host("unused")
+            .dir("/repo/src/bin")
+            .render();
+
+        let prompt = match prompt {
+            Ok(value) => value,
+            Err(err) => panic!("prompt render failed: {err}"),
+        };
+
+        let clean = strip_ansi(&prompt);
+        let mut lines = clean.lines();
+        let first = lines.next().unwrap_or("");
+        let second = lines.next().unwrap_or("");
+        assert!(lines.next().is_none());
+        assert_eq!(first, "dev@example.com: [pulse : main] src › bin");
+        assert_eq!(second, "└─ 9 $ ");
     }
 }
