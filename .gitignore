@@ -28,6 +28,8 @@ target
 /completions
 
 .*
+!.github/
+!.github/**
 TASK*.md
 AGENTS.md
 /agents.d

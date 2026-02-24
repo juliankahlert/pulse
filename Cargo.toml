@@ -10,8 +10,8 @@ serial_test = "3"
 tempfile = "3"
 
 [dependencies]
-clap = { version = "4.4", features = ["derive", "cargo"] }
-clap_complete = "4.4"
+clap = { version = "4.5", features = ["derive", "cargo"] }
+clap_complete = "4.5"
 owo-colors = { version = "4.0", features = ["supports-colors"] }
 gix = { version = "0.60", features = ["parallel"] }
 anyhow = "1.0"

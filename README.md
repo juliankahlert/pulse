@@ -30,8 +30,30 @@ export PROMPT_COMMAND='export LAST_EXIT_CODE=$?'
 
 This will execute `pulse` every time the prompt is displayed, generating the customized prompt with the correct exit code.
 
+Pulse can also manage your shell config automatically:
+
+```bash
+pulse --install
+pulse --install --dry-run
+pulse --uninstall
+```
+
 ## Configuration
-Configure the prompt via `/etc/pulse/config.yaml` (global) and `~/.config/pulse/config.yaml` (user-specific).
+Configure the prompt via the system configuration directory (if available) and your platform config directory under `pulse/config.yaml`.
+You can also point Pulse at an explicit file path with `--config`.
+An example configuration is available in [`config/example.yaml`](config/example.yaml).
+
+```bash
+pulse --config /path/to/config.yaml
+```
+
+## Performance Profiling
+Pulse is designed to be fast; if you need to measure performance, prefer
+external benchmarking tools so the prompt output stays unchanged.
+
+- `hyperfine "pulse"` for a quick local benchmark
+- `/usr/bin/time -p pulse` to capture wall-clock timing
+- `cargo flamegraph --bin pulse` for deeper profiling
 
 ### Segment Coloring
 Pulse supports coloring different segments of the prompt using a predefined color palette inspired by [clrs.cc](https://clrs.cc/). You can specify colors for various prompt segments in your configuration file.
@@ -70,6 +92,14 @@ segments:
   - name: current_directory
     color: Navy
 ```
+
+## Project Docs
+
+- [Architecture](ARCHITECTURE.md)
+- [Changelog](CHANGELOG.md)
+- [Contributing](CONTRIBUTING.md)
+- [Code of Conduct](CODE_OF_CONDUCT.md)
+- [License](LICENSE)
 
 ## Examples
 
@@ -116,4 +146,3 @@ user@host: [repository-name] src › main
 ```
 
 **Description:** Includes git repository name in brackets. First line: user@host: [repository-name : branch] src › main. Segments: username, @, hostname, :, space, [repository : branch], space, directory segments. Second line: └─ (U+2514 U+2500) separator, exit code of the last command (0), space, $.
-

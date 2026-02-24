@@ -1,0 +1,10 @@
+mode: DualLine
+segments:
+  - name: username
+    color: Blue
+  - name: hostname
+    color: Green
+  - name: current_directory
+    color: Silver
+  - name: git_branch
+    color: Red

@@ -23,8 +23,15 @@ fn main() -> Result<()> {
     let args = cli::Args::parse();
 
     if args.install {
-        return install::install().map_err(|e| {
+        return install::install(args.dry_run).map_err(|e| {
             error!("Failed to install: {}", e);
+            e
+        });
+    }
+
+    if args.uninstall {
+        return install::uninstall(args.dry_run).map_err(|e| {
+            error!("Failed to uninstall: {}", e);
             e
         });
     }
@@ -53,7 +60,11 @@ fn main() -> Result<()> {
         return Ok(());
     }
 
-    let mut config = config::Config::load().map_err(|e| {
+    let mut config = match args.config.as_deref() {
+        Some(path) => config::Config::load_from_path(path),
+        None => config::Config::load(),
+    }
+    .map_err(|e| {
         error!("Failed to load config: {}", e);
         e
     })?;
