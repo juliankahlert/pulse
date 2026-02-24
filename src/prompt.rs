@@ -21,23 +21,19 @@ pub fn get_terminal_width() -> Option<u16> {
     size().ok().map(|(w, _)| w)
 }
 
-pub fn is_in_git_repo() -> bool {
-    let mut current = match std::env::current_dir() {
-        Ok(p) => p,
-        Err(_) => return false,
-    };
+/// Discover a git repository starting from the given path.
+///
+/// This allows tests and callers to request discovery from an explicit
+/// directory, while keeping a convenience wrapper for the common
+/// case of discovering from the current working directory.
+fn discover_git_repo_in<P: AsRef<std::path::Path>>(path: P) -> Option<gix::Repository> {
+    gix::discover(path.as_ref()).ok()
+}
 
-    loop {
-        if current.join(".git").is_dir() {
-            return true;
-        }
-
-        if !current.pop() {
-            break;
-        }
-    }
-
-    false
+/// Convenience wrapper that discovers a repository from the current
+/// working directory (keeps the previous public behaviour).
+fn discover_git_repo() -> Option<gix::Repository> {
+    discover_git_repo_in(".")
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -77,12 +73,14 @@ pub struct GitInfo {
 }
 
 pub struct LazyGitInfo {
+    repo: Option<gix::Repository>,
     cached: OnceCell<Option<GitInfo>>,
 }
 
 impl LazyGitInfo {
-    pub fn new() -> Self {
+    pub fn new(repo: Option<gix::Repository>) -> Self {
         Self {
+            repo,
             cached: OnceCell::new(),
         }
     }
@@ -90,48 +88,9 @@ impl LazyGitInfo {
     pub fn get(&self) -> Option<&GitInfo> {
         self.cached
             .get_or_init(|| {
-                let repo = match gix::discover(".") {
-                    Ok(r) => r,
-                    Err(_) => return None,
-                };
-                let work_dir = match repo.work_dir() {
-                    Some(w) => w,
-                    None => return None,
-                };
-                let work_dir = match std::fs::canonicalize(work_dir) {
-                    Ok(w) => w,
-                    Err(_) => return None,
-                };
-                let repo_name = match work_dir.file_name().and_then(|n| n.to_str()) {
-                    Some(n) => n.to_string(),
-                    None => return None,
-                };
-
-                let mut head = match repo.head() {
-                    Ok(h) => h,
-                    Err(_) => return None,
-                };
-                let branch = if head.is_detached() {
-                    head.try_peel_to_id_in_place()
-                        .ok()
-                        .flatten()
-                        .map(|id| id.to_hex_with_len(7).to_string())
-                        .unwrap_or_else(|| "unknown".to_string())
-                } else {
-                    head.referent_name()
-                        .map(|name| name.shorten().to_string())
-                        .unwrap_or_else(|| "unknown".to_string())
-                };
-
-                let config = repo.config_snapshot();
-                let user_email = config.string("user.email").map(|s| s.to_string());
-
-                Some(GitInfo {
-                    repo_name,
-                    branch,
-                    user_email,
-                    work_dir,
-                })
+                self.repo
+                    .as_ref()
+                    .and_then(build_git_info)
             })
             .as_ref()
     }
@@ -139,13 +98,13 @@ impl LazyGitInfo {
 
 impl Default for LazyGitInfo {
     fn default() -> Self {
-        Self::new()
+        Self::new(discover_git_repo())
     }
 }
 
 #[allow(dead_code)]
 pub fn get_git_info() -> LazyGitInfo {
-    LazyGitInfo::new()
+    LazyGitInfo::new(discover_git_repo())
 }
 
 pub fn select_display_mode(
@@ -410,12 +369,8 @@ pub fn generate_prompt(config: &Config) -> Result<String> {
     let user = get_prompt_user()?;
     let host = get_hostname()?;
     let dir = get_current_directory()?;
-    let in_git = is_in_git_repo();
-    let git_info = if in_git {
-        Some(LazyGitInfo::new())
-    } else {
-        None
-    };
+    let repo = discover_git_repo();
+    let git_info = repo.map(|repo| LazyGitInfo::new(Some(repo)));
     let exit_code = get_exit_code();
 
     let user_color = config.get_color("username").to_dyn();
@@ -490,7 +445,11 @@ pub fn get_hostname() -> Result<String> {
 /// Get the current Git branch if in a repository
 #[allow(dead_code)]
 pub fn get_git_branch() -> Option<String> {
-    let repo = gix::discover(".").ok()?;
+    let repo = discover_git_repo()?;
+    get_git_branch_from_repo(&repo)
+}
+
+fn get_git_branch_from_repo(repo: &gix::Repository) -> Option<String> {
     let mut head = repo.head().ok()?;
     if head.is_detached() {
         head.try_peel_to_id_in_place()
@@ -517,13 +476,35 @@ pub fn is_root_user() -> bool {
 /// Get the git repository name if in a repository
 #[allow(dead_code)]
 pub fn get_git_repo_name() -> Option<String> {
-    let repo = gix::discover(".").ok()?;
+    let repo = discover_git_repo()?;
+    get_git_repo_name_from_repo(&repo)
+}
+
+fn get_git_repo_name_from_repo(repo: &gix::Repository) -> Option<String> {
     let workdir = repo.work_dir()?;
     std::fs::canonicalize(workdir)
         .ok()?
         .file_name()?
         .to_str()
         .map(|s| s.to_string())
+}
+
+fn build_git_info(repo: &gix::Repository) -> Option<GitInfo> {
+    let work_dir = repo.work_dir()?;
+    let work_dir = std::fs::canonicalize(work_dir).ok()?;
+    let repo_name = work_dir.file_name()?.to_str()?.to_string();
+    let branch = get_git_branch_from_repo(repo)
+        .unwrap_or_else(|| "unknown".to_string());
+
+    let config = repo.config_snapshot();
+    let user_email = config.string("user.email").map(|s| s.to_string());
+
+    Some(GitInfo {
+        repo_name,
+        branch,
+        user_email,
+        work_dir,
+    })
 }
 
 /// Truncate git path for display
@@ -615,11 +596,45 @@ pub fn build_non_git_path_string(
 mod tests {
     use super::*;
     use serial_test::serial;
+    use tempfile::TempDir;
+
+    struct DirGuard {
+        original: PathBuf,
+    }
+
+    impl DirGuard {
+        fn new(target: &std::path::Path) -> Self {
+            let original = std::env::current_dir().expect("current dir should be available");
+            std::env::set_current_dir(target).expect("set current dir to temp repo");
+            Self { original }
+        }
+    }
+
+    impl Drop for DirGuard {
+        fn drop(&mut self) {
+            let _ = std::env::set_current_dir(&self.original);
+        }
+    }
+
+    fn init_temp_git_repo() -> TempDir {
+        let temp_dir = tempfile::tempdir().expect("create temp dir");
+        let _repo = gix::init(temp_dir.path()).expect("init temp git repo");
+        temp_dir
+    }
+
+    fn repo_name_from_path(path: &std::path::Path) -> String {
+        path.file_name()
+            .and_then(|name| name.to_str())
+            .expect("temp repo dir name")
+            .to_string()
+    }
 
     #[test]
+    #[serial]
     fn test_is_in_git_repo() {
-        // This is run in a git repo, should return true
-        assert!(is_in_git_repo());
+        let temp_dir = init_temp_git_repo();
+        let _guard = DirGuard::new(temp_dir.path());
+        assert!(discover_git_repo().is_some());
     }
 
     #[test]
@@ -649,32 +664,41 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_get_git_branch() {
+        let temp_dir = init_temp_git_repo();
+        let _guard = DirGuard::new(temp_dir.path());
         let branch = get_git_branch();
-        // Since this is run in a git repo, should be Some
         assert!(branch.is_some());
         let branch_name = branch.expect("branch should be Some after is_some check");
         assert!(!branch_name.is_empty());
     }
 
     #[test]
+    #[serial]
     fn test_get_git_repo_name() {
+        let temp_dir = init_temp_git_repo();
+        let _guard = DirGuard::new(temp_dir.path());
+        let expected = repo_name_from_path(temp_dir.path());
         let repo_name = get_git_repo_name();
-        // Since this is run in a git repo, should be Some
         assert!(repo_name.is_some());
         let name = repo_name.expect("repo_name should be Some after is_some check");
-        assert_eq!(name, "pulse");
+        assert_eq!(name, expected);
         assert!(!name.is_empty());
     }
 
     #[test]
+    #[serial]
     fn test_get_git_info() {
+        let temp_dir = init_temp_git_repo();
+        let _guard = DirGuard::new(temp_dir.path());
+        let expected = repo_name_from_path(temp_dir.path());
         let lazy_info = get_git_info();
         assert!(lazy_info.get().is_some());
         let info = lazy_info
             .get()
             .expect("lazy_info should be Some after is_some check");
-        assert_eq!(info.repo_name, "pulse");
+        assert_eq!(info.repo_name, expected);
         assert!(!info.branch.is_empty());
         assert!(info.work_dir.is_absolute());
     }
@@ -814,7 +838,10 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_generate_prompt_inline_git() {
+        let temp_dir = init_temp_git_repo();
+        let _guard = DirGuard::new(temp_dir.path());
         let config = crate::config::Config {
             mode: Some("Inline".to_string()),
             ..Default::default()
@@ -827,13 +854,17 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_generate_prompt_dualline_git_format() {
+        let temp_dir = init_temp_git_repo();
+        let _guard = DirGuard::new(temp_dir.path());
+        let expected = repo_name_from_path(temp_dir.path());
         let config = crate::config::Config::default();
         let prompt = generate_prompt(&config);
         assert!(prompt.is_ok());
         let p = prompt.expect("prompt should be Ok after is_ok check");
         // Should contain repo name and branch in Git format
-        assert!(p.contains("pulse")); // repo name
+        assert!(p.contains(&expected));
         assert!(p.contains("[")); // start of Git info
         assert!(p.contains(" : ")); // separator
         assert!(p.contains("]")); // end of Git info
