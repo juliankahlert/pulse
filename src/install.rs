@@ -7,12 +7,10 @@ const INSTALL_START_MARKER: &str = "# >>> Pulse >>>";
 const INSTALL_END_MARKER: &str = "# <<< Pulse <<<";
 
 const BASH_INSTALL_COMMENT: &str = "# Pulse - PS1 prompt engine";
-const BASH_EXPORT_PS1: &str = r#"export PS1='$(pulse)'"#;
-const BASH_PROMPT_COMMAND: &str = r#"export PROMPT_COMMAND='export LAST_EXIT_CODE=$?'"#;
+const BASH_PRECMD: &str = r#"__pulse_precmd() { local ec=$?; local out; out="$(LAST_EXIT_CODE=$ec pulse)"; if [[ "$out" == *$'\n'* ]]; then printf '%s\n' "${out%$'\n'*}"; PS1="${out##*$'\n'}"; else PS1="$out"; fi; }; PROMPT_COMMAND='__pulse_precmd'"#;
 
 const ZSH_INSTALL_COMMENT: &str = "# Pulse - PS1 prompt engine";
-const ZSH_EXPORT_PS1: &str = r#"export PS1='$(pulse)'"#;
-const ZSH_PROMPT_COMMAND: &str = r#"export PROMPT_COMMAND='export LAST_EXIT_CODE=$?'"#;
+const ZSH_PRECMD: &str = r#"__pulse_precmd() { local ec=$?; local out; out="$(LAST_EXIT_CODE=$ec pulse)"; if [[ "$out" == *$'\n'* ]]; then printf '%s\n' "${out%$'\n'*}"; PROMPT="${out##*$'\n'}"; else PROMPT="$out"; fi; }; precmd_functions+=(__pulse_precmd)"#;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ShellKind {
@@ -321,14 +319,14 @@ fn remove_install_block(content: &str) -> (String, bool) {
 /// }
 /// ```
 fn install_block_for(shell: ShellKind) -> String {
-    let (comment, ps1_line, prompt_command_line) = match shell {
-        ShellKind::Zsh => (ZSH_INSTALL_COMMENT, ZSH_EXPORT_PS1, ZSH_PROMPT_COMMAND),
-        ShellKind::Bash => (BASH_INSTALL_COMMENT, BASH_EXPORT_PS1, BASH_PROMPT_COMMAND),
+    let (comment, precmd) = match shell {
+        ShellKind::Zsh => (ZSH_INSTALL_COMMENT, ZSH_PRECMD),
+        ShellKind::Bash => (BASH_INSTALL_COMMENT, BASH_PRECMD),
     };
 
     format!(
-        "{}\n{}\n{}\n{}\n{}",
-        INSTALL_START_MARKER, comment, ps1_line, prompt_command_line, INSTALL_END_MARKER
+        "{}\n{}\n{}\n{}",
+        INSTALL_START_MARKER, comment, precmd, INSTALL_END_MARKER
     )
 }
 
@@ -488,8 +486,11 @@ mod tests {
 
     #[test]
     fn test_remove_install_block_without_trailing_blank_line() {
-        let content = "before\n# >>> Pulse >>>\n# Pulse - PS1 prompt engine\nexport PS1='$(pulse)'\nexport PROMPT_COMMAND='export LAST_EXIT_CODE=$?'\n# <<< Pulse <<<\nafter";
-        let (remaining, removed) = remove_install_block(content);
+        let content = format!(
+            "before\n# >>> Pulse >>>\n# Pulse - PS1 prompt engine\n{}\n# <<< Pulse <<<\nafter",
+            BASH_PRECMD
+        );
+        let (remaining, removed) = remove_install_block(&content);
 
         assert!(removed);
         assert_eq!(remaining, "before\nafter");

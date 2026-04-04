@@ -18,6 +18,52 @@ use owo_colors::OwoColorize;
 const DEFAULT_TERM_WIDTH: usize = 120;
 const TRUNCATION_THRESHOLD: usize = 3;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ShellKind {
+    Bash,
+    Zsh,
+}
+
+fn detect_shell() -> ShellKind {
+    if std::env::var_os("ZSH_VERSION").is_some() {
+        ShellKind::Zsh
+    } else {
+        ShellKind::Bash
+    }
+}
+
+/// Wrap ANSI escape sequences with readline invisible-character markers so that
+/// the shell can correctly calculate the visual width of the prompt. Without
+/// these markers, terminal resize in multi-line prompts causes display corruption.
+fn wrap_ansi_for_readline(prompt: &str, shell: ShellKind) -> String {
+    let (start, end) = match shell {
+        ShellKind::Bash => ("\x01", "\x02"),
+        ShellKind::Zsh => ("%{", "%}"),
+    };
+
+    let mut result = String::with_capacity(prompt.len() * 2);
+    let mut chars = prompt.chars().peekable();
+
+    while let Some(c) = chars.next() {
+        if c == '\x1b' && chars.peek() == Some(&'[') {
+            result.push_str(start);
+            result.push(c);
+            result.push(chars.next().unwrap()); // '['
+            while let Some(&next) = chars.peek() {
+                result.push(chars.next().unwrap());
+                if next.is_ascii_alphabetic() {
+                    break;
+                }
+            }
+            result.push_str(end);
+        } else {
+            result.push(c);
+        }
+    }
+
+    result
+}
+
 pub fn get_terminal_width() -> Option<u16> {
     size().ok().map(|(w, _)| w)
 }
@@ -580,7 +626,7 @@ pub fn generate_prompt(config: &Config) -> Result<String> {
     let exit_code = get_exit_code();
     let terminal_width = get_terminal_width().unwrap_or(DEFAULT_TERM_WIDTH as u16);
 
-    PromptBuilder::from_config(config)
+    let prompt = PromptBuilder::from_config(config)
         .terminal_width(terminal_width)
         .current_dir_path(current_dir)
         .exit_code(exit_code)
@@ -589,7 +635,9 @@ pub fn generate_prompt(config: &Config) -> Result<String> {
         .user(user)
         .host(host)
         .dir(dir)
-        .render()
+        .render()?;
+
+    Ok(wrap_ansi_for_readline(&prompt, detect_shell()))
 }
 
 /// Get the system's hostname
@@ -1620,5 +1668,36 @@ mod tests {
         assert!(lines.next().is_none());
         assert_eq!(first, "dev@example.com: [pulse : main] src › bin");
         assert_eq!(second, "└─ 9 $ ");
+    }
+
+    #[test]
+    fn wrap_ansi_for_readline_bash_wraps_escape_sequences() {
+        let input = "\x1b[38;2;0;116;217mhello\x1b[0m world";
+        let result = wrap_ansi_for_readline(input, ShellKind::Bash);
+        assert_eq!(result, "\x01\x1b[38;2;0;116;217m\x02hello\x01\x1b[0m\x02 world");
+    }
+
+    #[test]
+    fn wrap_ansi_for_readline_zsh_wraps_escape_sequences() {
+        let input = "\x1b[31mred\x1b[0m";
+        let result = wrap_ansi_for_readline(input, ShellKind::Zsh);
+        assert_eq!(result, "%{\x1b[31m%}red%{\x1b[0m%}");
+    }
+
+    #[test]
+    fn wrap_ansi_for_readline_no_escape_sequences() {
+        let input = "plain text";
+        let result = wrap_ansi_for_readline(input, ShellKind::Bash);
+        assert_eq!(result, "plain text");
+    }
+
+    #[test]
+    fn wrap_ansi_for_readline_preserves_newline() {
+        let input = "\x1b[32mline1\x1b[0m\n└─ \x1b[33m0\x1b[0m $ ";
+        let result = wrap_ansi_for_readline(input, ShellKind::Bash);
+        assert_eq!(
+            result,
+            "\x01\x1b[32m\x02line1\x01\x1b[0m\x02\n└─ \x01\x1b[33m\x020\x01\x1b[0m\x02 $ "
+        );
     }
 }
